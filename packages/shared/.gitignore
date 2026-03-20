@@ -1,0 +1,21 @@
+# Dart/Flutter
+.dart_tool/
+.packages
+build/
+
+# Melos
+pubspec_overrides.yaml
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+devtools_options.yaml
+
+.claude/
+/.flutter-plugins-dependencies

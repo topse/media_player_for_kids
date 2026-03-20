@@ -1,0 +1,55 @@
+name: media_player_for_kids
+description: Media Player für Kinder – Mono-Repo mit Backend, Frontend und Shared Package
+publish_to: none
+
+environment:
+  sdk: ">=3.10.4 <4.0.0"
+
+dev_dependencies:
+  melos: ^7.4.0
+
+workspace:
+  - packages/shared
+  - packages/companion
+  - packages/player
+
+melos:
+  packages:
+    - packages/**
+
+  command:
+    bootstrap:
+      usePubspecOverrides: true
+
+  scripts:
+    analyze:
+      description: Alle Packages analysieren
+      run: dart analyze .
+      exec:
+        concurrency: 1
+
+    test:
+      description: Tests in allen Packages ausführen
+      run: flutter test
+      packageFilters:
+        dirExists: test
+
+    build_runner:
+      description: Code-Generierung
+      run: dart run build_runner build --delete-conflicting-outputs
+      exec:
+        concurrency: 1
+      packageFilters:
+        dependsOn: build_runner
+
+    clean:
+      description: Alle Packages bereinigen
+      run: flutter clean
+      exec:
+        concurrency: 1
+
+    format:
+      description: Code formatieren
+      run: dart format .
+      exec:
+        concurrency: 1

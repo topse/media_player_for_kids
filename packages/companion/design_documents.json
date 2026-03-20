@@ -1,0 +1,12 @@
+[
+    {
+        "_id": "_design/mediatree",
+        "_rev": "5-81f20c1c7ec9b8b6ce42b1a297e4f94c",
+        "views": {
+            "by_parent": {
+                "map": "function (doc) {\n  if (doc['!doc_type'].startsWith('media_') && doc['!doc_type'] !== 'media_track') emit([doc['parent'], doc['sortHint']]);\n}"
+            }
+        },
+        "language": "javascript"
+    }
+]
