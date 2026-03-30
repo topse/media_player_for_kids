@@ -30,6 +30,7 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
   bool _completedNaturally = false;
   StreamSubscription<ProcessingState>? _completionSub;
   StreamSubscription<bool>? _playingSub;
+  StreamSubscription? _dbSubscription;
 
   @override
   void initState() {
@@ -47,7 +48,6 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
 
     final isNearEnd =
         currentIndex == lastTrackIndex &&
-        lastTrackDurationMs != null &&
         position.inMilliseconds >= (lastTrackDurationMs - 30000);
 
     final svc = di<PlayPositionService>();
@@ -72,9 +72,40 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
     }
   }
 
+  bool _isItemOrAncestorHidden(
+    String id,
+    Map<String, models.MediaBase> byId,
+  ) {
+    String? current = id;
+    while (current != null) {
+      final doc = byId[current];
+      if (doc == null) break;
+      if (doc.hidden) return true;
+      current = doc.parent;
+    }
+    return false;
+  }
+
   Future<void> _initAudioAndPlay() async {
     _audioService = di<AudioPlayerService>();
     _audioService.stop();
+
+    // Pop the page if this item (or any ancestor folder) becomes hidden.
+    _dbSubscription = di<DartCouchDb>()
+        .useAllDocs(includeDocs: true)
+        .listen((result) {
+      if (!mounted) return;
+      final docs = result?.rows
+          .map((e) => e.doc)
+          .whereType<models.MediaBase>()
+          .toList();
+      if (docs == null) return;
+      final byId = {for (final d in docs) if (d.id != null) d.id!: d};
+      if (_isItemOrAncestorHidden(widget.item.id!, byId)) {
+        _audioService.stop();
+        Navigator.of(context).pop();
+      }
+    });
 
     // Load all audio attachments from CouchDB into memory
     final db = di<DartCouchDb>();
@@ -197,6 +228,7 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
     WidgetsBinding.instance.removeObserver(this);
     _completionSub?.cancel();
     _playingSub?.cancel();
+    _dbSubscription?.cancel();
 
     if (widget.item.isAudioBook &&
         !_completedNaturally &&
@@ -424,6 +456,7 @@ class _TrackCoverImage extends StatefulWidget {
     super.key,
     required this.trackDocId,
     required this.fallbackItem,
+    // ignore: unused_element_parameter
     this.iconSize = 96,
   });
 

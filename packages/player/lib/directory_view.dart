@@ -55,13 +55,23 @@ class _DirectoryViewState extends State<DirectoryView>
     int elapsedMs = 0;
     for (int i = 0; i < media.length; i++) {
       final dMs = media[i].durationMs;
-      if (dMs == null) return null;
       totalMs += dMs;
       if (i < trackIndex) elapsedMs += dMs;
       if (i == trackIndex) elapsedMs += seconds * 1000;
     }
     if (totalMs == 0) return null;
     return (elapsedMs / totalMs).clamp(0.0, 1.0);
+  }
+
+  bool _isHiddenOrHasHiddenAncestor(String id, Map<String, MediaBase> byId) {
+    String? current = id;
+    while (current != null) {
+      final doc = byId[current];
+      if (doc == null) break;
+      if (doc.hidden) return true;
+      current = doc.parent;
+    }
+    return false;
   }
 
   void _createSubscription() {
@@ -89,6 +99,13 @@ class _DirectoryViewState extends State<DirectoryView>
       }
       setState(() {
         entries = docs;
+        // Reset to root if the current folder (or any ancestor) became hidden.
+        if (parentNodeId != null && docs != null) {
+          final byId = {for (final d in docs) if (d.id != null) d.id!: d};
+          if (_isHiddenOrHasHiddenAncestor(parentNodeId!, byId)) {
+            parentNodeId = null;
+          }
+        }
       });
       _scheduleVisibilityRefresh();
     });
@@ -160,11 +177,16 @@ class _DirectoryViewState extends State<DirectoryView>
     final now = DateTime.now();
     final effectivelyNewById = buildEffectiveIsNewMap(
       allDocuments,
-      includeInTraversal: (media) => media.isVisibleAt(now),
+      includeInTraversal: (media) => media.isVisibleAt(now) && !media.hidden,
     );
     final rootItems =
         entries!
-            .where((e) => e.parent == parentNodeId && e.isVisibleAt(now))
+            .where(
+              (e) =>
+                  e.parent == parentNodeId &&
+                  e.isVisibleAt(now) &&
+                  !e.hidden,
+            )
             .toList()
           ..sort((a, b) => a.sortHint.compareTo(b.sortHint));
 

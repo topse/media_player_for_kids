@@ -31,12 +31,15 @@ abstract class MediaBase extends CouchDocumentBase with MediaBaseMappable {
   @MappableField(key: 'to_date_time')
   final String? toDateTime;
 
+  final bool hidden;
+
   MediaBase({
     this.parent,
     required this.sortHint,
     required this.name,
     this.fromDateTime,
     this.toDateTime,
+    this.hidden = false,
     super.id,
     super.attachments,
     super.deleted,
@@ -130,6 +133,7 @@ class MediaFolder extends MediaBase with MediaFolderMappable {
     required super.name,
     super.fromDateTime,
     super.toDateTime,
+    super.hidden,
     super.id,
     super.attachments,
     super.deleted,
@@ -223,6 +227,7 @@ class MediaItem extends MediaBase with MediaItemMappable {
     required this.isNew,
     super.fromDateTime,
     super.toDateTime,
+    super.hidden,
     super.id,
     super.attachments,
     super.deleted,
@@ -322,19 +327,30 @@ class MediaAttachment with MediaAttachmentMappable {
   final int? disc;
   final int? discTotal;
 
-  /// EBU R128 Integrated Loudness in LUFS.
-  final double? lufs;
+  /// EBU R128 Integrated Loudness in LUFS (full-file average).
+  final double lufs;
+
+  /// Maximum EBU R128 Momentary Loudness in LUFS (400 ms window) over the
+  /// whole file. Null for files shorter than 400 ms or where every measurement
+  /// frame was silence (ffmpeg reports 'nan' in those cases).
+  final double? momentary;
+
+  /// Maximum EBU R128 Short-Term Loudness in LUFS (3 s window) over the whole
+  /// file. Null for files shorter than 3 s or where every measurement frame
+  /// was silence (ffmpeg reports 'nan' in those cases).
+  @MappableField(key: 'short_term')
+  final double? shortTerm;
 
   /// EBU R128 Loudness Range in LU.
-  final double? lra;
+  final double lra;
 
-  /// EBU R128 True Peak in dBTP.
+  /// Maximum EBU R128 True Peak in dBTP across all channels and all frames.
   @MappableField(key: 'true_peak')
-  final double? truePeak;
+  final double truePeak;
 
   /// Audio duration in milliseconds.
   @MappableField(key: 'duration_ms')
-  final int? durationMs;
+  final int durationMs;
 
   /// The attachmentId is the _id of the MediaTrack document that holds this media file as an attachment.
   @MappableField(key: 'attachment_id')
@@ -350,10 +366,12 @@ class MediaAttachment with MediaAttachmentMappable {
     this.trackTotal,
     this.disc,
     this.discTotal,
-    this.lufs,
-    this.lra,
-    this.truePeak,
-    this.durationMs,
+    this.lufs = 0.0,
+    this.momentary,
+    this.shortTerm,
+    this.lra = 0.0,
+    this.truePeak = 0.0,
+    this.durationMs = 0,
   }) : _title = title;
 
   String get title => _title ?? fileName;

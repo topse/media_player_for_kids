@@ -47,7 +47,7 @@ SetCompressor /SOLID lzma
 ;--------------------------------
 ; Pages
 
-  !insertmacro MUI_PAGE_LICENSE "../license.txt"
+  !insertmacro MUI_PAGE_LICENSE "../LICENSE"
   !insertmacro MUI_PAGE_INSTFILES
   !insertmacro MUI_PAGE_FINISH
 

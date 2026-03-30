@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:metatagger/metatagger.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:watch_it/watch_it.dart';
 
 import 'package:shared/shared.dart';
@@ -31,6 +32,40 @@ class ImportProgress {
     if (totalFiles == 0) return 0;
     return completedFiles / totalFiles;
   }
+}
+
+/// Shows a dialog asking the user if they want to compress uncompressed audio files.
+/// Returns true if user chooses to compress, false otherwise.
+Future<bool> showCompressionPrompt(BuildContext context, int uncompressedCount) async {
+  return await showDialog<bool>(
+    context: context,
+    barrierDismissible: false, // User must make a choice
+    builder: (BuildContext context) {
+      String fileText = uncompressedCount == 1 ? '1 file' : '$uncompressedCount files';
+      
+      return AlertDialog(
+        title: const Text('Compress Audio Files?'),
+        content: Text(
+          '$fileText not highly compressed. Compress to AAC (160kbps stereo/80kbps mono)?\n\n'
+          'Quality will be indistinguishable from CD. Original files will not be modified.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            child: const Text('No, keep originals'),
+            onPressed: () {
+              Navigator.of(context).pop(false);
+            },
+          ),
+          ElevatedButton(
+            child: const Text('Yes, compress'),
+            onPressed: () {
+              Navigator.of(context).pop(true);
+            },
+          ),
+        ],
+      );
+    },
+  ) ?? false; // Default to false if dialog somehow returns null
 }
 
 /// Manages a shared import progress dialog across multiple
@@ -118,6 +153,9 @@ class ImportProgressDialog {
 /// Supported audio/video file extensions for import.
 const audioExtensions = {'mp3', 'ogg', 'wav', 'm4a', 'mp4', 'flac'};
 
+/// File extensions that are considered uncompressed or lightly compressed.
+const uncompressedExtensions = {'wav', 'flac', 'aiff', 'wma'};
+
 /// Maps a file path extension to a MIME type string.
 /// Returns 'application/octet-stream' for unknown extensions.
 String getContentTypeFromExtension(String path) {
@@ -140,6 +178,12 @@ String getContentTypeFromExtension(String path) {
     default:
       return 'application/octet-stream';
   }
+}
+
+/// Checks if a file is uncompressed or lightly compressed.
+bool isUncompressedFile(String path) {
+  final ext = path.split('.').last.toLowerCase();
+  return uncompressedExtensions.contains(ext);
 }
 
 /// Imports audio/video files from a drop event as attachments to an existing
@@ -172,11 +216,23 @@ importAudioFilesToDocument({
   if (!context.mounted) return null;
   final newMediaAttachments = <MediaAttachment>[];
 
+  // Check for uncompressed files and ask user about compression
+  final uncompressedFiles = files.where((file) => isUncompressedFile(file.path)).toList();
+  bool shouldCompress = false;
+  
+  if (uncompressedFiles.isNotEmpty && context.mounted) {
+    shouldCompress = await showCompressionPrompt(context, uncompressedFiles.length);
+  }
+
   // If no shared progress dialog, create a local one for this call.
   final localProgress = progress == null;
   final prog = progress ??
-      ImportProgressDialog(context: context, totalFiles: files.length);
-  if (localProgress) prog.show();
+      (context.mounted ? ImportProgressDialog(context: context, totalFiles: files.length) : null);
+  if (localProgress && prog != null) prog.show();
+
+  // Get temporary directory for compressed files
+  final tempDir = await getTemporaryDirectory();
+  final List<String> tempFilesToCleanup = [];
 
   for (final file in files) {
     final path = file.path;
@@ -186,7 +242,7 @@ importAudioFilesToDocument({
     _log.info("$filename has ContentType $contentType");
 
     try {
-      prog.update('Importing file\n$filename');
+      prog?.update('Importing file\n$filename');
 
       if (!contentType.startsWith('audio/') &&
           !contentType.startsWith('video/')) {
@@ -195,13 +251,39 @@ importAudioFilesToDocument({
             SnackBar(content: Text('Unsupported file type: $filename')),
           );
         }
-        prog.update('Skipped unsupported file\n$filename');
+        prog?.update('Skipped unsupported file\n$filename');
         continue;
+      }
+
+      // Determine the file to use for import (original or compressed)
+      String fileToUse = path;
+      bool isCompressed = false;
+      
+      // Check if this file should be compressed
+      if (shouldCompress && isUncompressedFile(path)) {
+        prog?.update('Compressing file\n$filename');
+        
+        // Create compressed version
+        final compressedPath = '${tempDir.path}/$filename.compressed.m4a';
+        final compressedFilePath = await compressAudioFile(path, compressedPath);
+        
+        if (compressedFilePath != null) {
+          fileToUse = compressedFilePath;
+          isCompressed = true;
+          tempFilesToCleanup.add(compressedFilePath);
+          _log.info('Compressed $filename to $compressedFilePath');
+        } else {
+          _log.warning('Failed to compress $filename, using original');
+        }
       }
 
       Uint8List? bytes;
       try {
-        bytes = await file.readAsBytes();
+        // Read from the file to use (original or compressed)
+        final fileToRead = File(fileToUse);
+        if (await fileToRead.exists()) {
+          bytes = await fileToRead.readAsBytes();
+        }
       } catch (_) {
         if (file.path.isNotEmpty) {
           final f = File(file.path);
@@ -210,9 +292,15 @@ importAudioFilesToDocument({
       }
 
       if (bytes != null && bytes.isNotEmpty) {
+        // Determine content type for the imported file
+        String finalContentType = contentType;
+        if (isCompressed) {
+          finalContentType = 'audio/mp4'; // AAC in MP4 container
+        }
+
         // Create a MediaTrack document to hold this audio file and its cover.
         // attachmentId in MediaAttachment now equals the MediaTrack doc ID.
-        final trackDoc = MediaTrack(parent: docId, contentType: contentType);
+        final trackDoc = MediaTrack(parent: docId, contentType: finalContentType);
         final postedTrack = await di<DartCouchDb>().post(trackDoc);
         final trackId = postedTrack.id!;
         String trackRev = postedTrack.rev!;
@@ -223,7 +311,7 @@ importAudioFilesToDocument({
           trackRev,
           MediaTrack.audioAttachmentName,
           bytes,
-          contentType: contentType,
+          contentType: finalContentType,
         );
 
         String? title;
@@ -276,20 +364,12 @@ importAudioFilesToDocument({
         }
 
         // Measure EBU R128 loudness and duration
-        prog.update('Analyzing loudness\n$filename');
-        double? lufs;
-        double? lra;
-        double? truePeak;
-        int? durationMs;
+        // Use the same file that was imported (compressed or original)
+        prog?.update('Analyzing loudness\n$filename');
+        AudioAnalysis? analysis;
         try {
-          final analysis = await analyzeAudio(path);
-          if (analysis != null) {
-            lufs = analysis.lufs;
-            lra = analysis.lra;
-            truePeak = analysis.truePeak;
-            durationMs = analysis.durationMs;
-            _log.info('$filename: $analysis');
-          }
+          analysis = await analyzeAudio(fileToUse);
+          if (analysis != null) _log.info('$filename: $analysis');
         } catch (e) {
           _log.warning('Failed to analyze loudness for $filename: $e');
         }
@@ -305,13 +385,15 @@ importAudioFilesToDocument({
             disc: disc,
             discTotal: discTotal,
             attachmentId: trackId,
-            lufs: lufs,
-            lra: lra,
-            truePeak: truePeak,
-            durationMs: durationMs,
+            lufs: analysis?.lufs ?? 0.0,
+            momentary: analysis?.momentary,
+            shortTerm: analysis?.shortTerm,
+            lra: analysis?.lra ?? 0.0,
+            truePeak: analysis?.truePeak ?? 0.0,
+            durationMs: analysis?.durationMs ?? 0,
           ),
         );
-        prog.fileImported();
+        prog?.fileImported();
       }
     } catch (e) {
       if (context.mounted) {
@@ -320,14 +402,27 @@ importAudioFilesToDocument({
         ).showSnackBar(SnackBar(content: Text('Error adding file: $e')));
       }
     } finally {
-      prog.fileCompleted();
-      prog.update('Finished file\n$filename');
+      prog?.fileCompleted();
+      prog?.update('Finished file\n$filename');
     }
   }
 
-  if (localProgress) {
+  if (localProgress && prog != null) {
     prog.update('Finalizing import...');
     prog.close();
+  }
+
+  // Clean up temporary compressed files
+  for (final tempFile in tempFilesToCleanup) {
+    try {
+      final file = File(tempFile);
+      if (await file.exists()) {
+        await file.delete();
+        _log.info('Deleted temporary file: $tempFile');
+      }
+    } catch (e) {
+      _log.warning('Failed to delete temporary file $tempFile: $e');
+    }
   }
 
   return (attachments: newMediaAttachments, finalRev: docRev);

@@ -24,6 +24,7 @@ typedef ImportModeSelection = ({
   String? toDateTime,
   bool isAudioBook,
   bool isNew,
+  bool hidden,
 });
 
 class MediaFolderDetail extends StatefulWidget {
@@ -106,6 +107,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
       DateTime? toDate;
       bool isAudioBook = false;
       bool isNew = true;
+      bool hidden = false;
 
       return StatefulBuilder(
         builder: (ctx, setDialogState) {
@@ -150,6 +152,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                         toDateTime: toDate?.toIso8601String(),
                         isAudioBook: isAudioBook,
                         isNew: isNew,
+                        hidden: hidden,
                       )),
                     ),
                     const SizedBox(height: 8),
@@ -171,6 +174,15 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                       setDialogState(() => isNew = value ?? true);
                     },
                     title: const Text('Is New'),
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: hidden,
+                    onChanged: (value) {
+                      setDialogState(() => hidden = value ?? false);
+                    },
+                    title: const Text('Hidden'),
                     controlAffinity: ListTileControlAffinity.leading,
                   ),
                   const SizedBox(height: 8),
@@ -450,6 +462,14 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
     await di<DartCouchDb>().put(item.copyWith(isNew: !item.isNew));
   }
 
+  Future<void> _toggleHidden(MediaBase doc) async {
+    if (doc is MediaFolder) {
+      await di<DartCouchDb>().put(doc.copyWith(hidden: !doc.hidden));
+    } else if (doc is MediaItem) {
+      await di<DartCouchDb>().put(doc.copyWith(hidden: !doc.hidden));
+    }
+  }
+
   Widget _tinyLetterButton({
     required String label,
     required bool active,
@@ -571,6 +591,21 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
           leadingIcon: Icons.calendar_today,
           onLongPress: hasToDate ? () => _setToDate(doc, null) : null,
         ),
+      ],
+    );
+  }
+
+  Widget _buildHiddenColumn(MediaBase doc) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _tinyIconToggleButton(
+          icon: doc.hidden ? Icons.visibility_off : Icons.visibility,
+          active: doc.hidden,
+          onPressed: () => _toggleHidden(doc),
+        ),
+        const SizedBox(height: 4),
+        const SizedBox(width: 26, height: 22),
       ],
     );
   }
@@ -734,6 +769,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
           toDateTime: selection.toDateTime,
           isAudioBook: selection.isAudioBook,
           isNew: selection.isNew,
+          hidden: selection.hidden,
         );
       } else if (selection.mode == 'single') {
         final name = await _showNameDialog(droppedFolders.first.name);
@@ -745,6 +781,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
           toDateTime: selection.toDateTime,
           isAudioBook: selection.isAudioBook,
           isNew: selection.isNew,
+          hidden: selection.hidden,
         );
       } else {
         await _importAsEach(
@@ -753,6 +790,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
           toDateTime: selection.toDateTime,
           isAudioBook: selection.isAudioBook,
           isNew: selection.isNew,
+          hidden: selection.hidden,
         );
       }
       return;
@@ -789,6 +827,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
           toDateTime: selection.toDateTime,
           isAudioBook: selection.isAudioBook,
           isNew: selection.isNew,
+          hidden: selection.hidden,
         );
       } else {
         await _importAsEach(
@@ -797,6 +836,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
           toDateTime: selection.toDateTime,
           isAudioBook: selection.isAudioBook,
           isNew: selection.isNew,
+          hidden: selection.hidden,
         );
       }
     }
@@ -809,6 +849,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
     String? toDateTime,
     bool isAudioBook = false,
     bool isNew = true,
+    bool hidden = false,
   }) async {
     final tentativeName = nameFromDialog ?? _stemName(files.first.path);
 
@@ -824,6 +865,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
       isNew: isNew,
       fromDateTime: fromDateTime,
       toDateTime: toDateTime,
+      hidden: hidden,
     );
     final postResult = await di<DartCouchDb>().post(newItem);
     if (!mounted) return;
@@ -878,6 +920,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
     String? toDateTime,
     bool isAudioBook = false,
     bool isNew = true,
+    bool hidden = false,
   }) async {
     int sortHint = _nextSortHint();
     int successCount = 0;
@@ -899,9 +942,10 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
         shuffle: false,
         showTrackCoverRatherThanItemCover: false,
         isAudioBook: isAudioBook,
-        isNew: true,
+        isNew: isNew,
         fromDateTime: fromDateTime,
         toDateTime: toDateTime,
+        hidden: hidden,
       );
       final postResult = await di<DartCouchDb>().post(newItem);
       if (!mounted) {
@@ -955,6 +999,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
     String? toDateTime,
     bool isAudioBook = false,
     bool isNew = true,
+    bool hidden = false,
   }) async {
     int sortHint = _nextSortHint();
     int successCount = 0;
@@ -976,9 +1021,10 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
         shuffle: false,
         showTrackCoverRatherThanItemCover: false,
         isAudioBook: isAudioBook,
-        isNew: true,
+        isNew: isNew,
         fromDateTime: fromDateTime,
         toDateTime: toDateTime,
+        hidden: hidden,
       );
       final postResult = await di<DartCouchDb>().post(newItem);
       if (!mounted) {
@@ -1175,13 +1221,15 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                               style: TextStyle(color: textColor),
                             ),
                             trailing: SizedBox(
-                              width: 198,
+                              width: 232,
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
                                   _buildDateButtonsColumn(doc),
                                   const SizedBox(width: 4),
                                   _buildFlagsColumn(doc),
+                                  const SizedBox(width: 4),
+                                  _buildHiddenColumn(doc),
                                   const SizedBox(width: 4),
                                   IconButton(
                                     icon: Icon(

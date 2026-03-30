@@ -85,6 +85,15 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
   }
 
+  Future<void> _toggleHidden() async {
+    final media = widget.media;
+    if (media is MediaFolder) {
+      await di<DartCouchDb>().put(media.copyWith(hidden: !media.hidden));
+    } else if (media is MediaItem) {
+      await di<DartCouchDb>().put(media.copyWith(hidden: !media.hidden));
+    }
+  }
+
   Future<void> _setFromDate(DateTime? date) async {
     final iso = date?.toIso8601String();
     final media = widget.media;
@@ -403,6 +412,19 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
                   ],
                 ),
               ),
+            ],
+          ),
+        ),
+        const Divider(),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Row(
+            children: [
+              Checkbox(
+                value: widget.media.hidden,
+                onChanged: (_) => _toggleHidden(),
+              ),
+              const Text('Hidden'),
             ],
           ),
         ),

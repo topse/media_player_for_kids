@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
-import 'package:dart_couch_widgets/dart_couch.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:logging/logging.dart';
 import 'package:player/audio_device_service.dart';
@@ -13,62 +11,6 @@ import 'package:watch_it/watch_it.dart';
 final _log = Logger('audio_player_service');
 
 /// An AudioSource that plays from in-memory bytes.
-class DartCouchDbAttachmentAudioSource extends StreamAudioSource {
-  final String docId;
-  final String attachmentId;
-  final String contentType;
-
-  final String debugString;
-
-  Uint8List? _cachedBytes;
-
-  DartCouchDbAttachmentAudioSource({
-    required this.docId,
-    required this.attachmentId,
-    required this.contentType,
-    required this.debugString,
-  });
-
-  @override
-  Future<StreamAudioResponse> request([int? start, int? end]) async {
-    _log.info(
-      "DartCouchDbAttachmentAudioSource.request docid: $docId, attachmentId: $attachmentId, start: $start, end: $end",
-    );
-
-    if (_cachedBytes == null) {
-      final stopwatch = Stopwatch()..start();
-      _cachedBytes = await di<DartCouchDb>().getAttachment(docId, attachmentId);
-      stopwatch.stop();
-      _log.info(
-        'getAttachment $debugString took ${stopwatch.elapsedMilliseconds} ms',
-      );
-    }
-
-    if (_cachedBytes == null) {
-      // Attachment could not be loaded??? Return an empty stream to avoid crashing.
-      // TODO: Maybe better throw?
-      _log.severe('getAttachment $debugString returned null!');
-      return StreamAudioResponse(
-        sourceLength: 0,
-        contentLength: 0,
-        offset: 0,
-        stream: Stream.empty(),
-        contentType: '',
-      );
-    }
-
-    start ??= 0;
-    end ??= _cachedBytes!.length;
-    return StreamAudioResponse(
-      sourceLength: _cachedBytes!.length,
-      contentLength: end - start,
-      offset: start,
-      stream: Stream.value(_cachedBytes!.sublist(start, end)),
-      contentType: contentType,
-    );
-  }
-}
-
 /// Describes a single track to be played.
 class AudioTrack {
   final String id;

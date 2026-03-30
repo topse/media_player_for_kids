@@ -55,6 +55,13 @@ class MediaBaseMapper extends SubClassMapperBase<MediaBase> {
     key: r'to_date_time',
     opt: true,
   );
+  static bool _$hidden(MediaBase v) => v.hidden;
+  static const Field<MediaBase, bool> _f$hidden = Field(
+    'hidden',
+    _$hidden,
+    opt: true,
+    def: false,
+  );
   static String? _$id(MediaBase v) => v.id;
   static const Field<MediaBase, String> _f$id = Field(
     'id',
@@ -110,6 +117,7 @@ class MediaBaseMapper extends SubClassMapperBase<MediaBase> {
     #name: _f$name,
     #fromDateTime: _f$fromDateTime,
     #toDateTime: _f$toDateTime,
+    #hidden: _f$hidden,
     #id: _f$id,
     #attachments: _f$attachments,
     #deleted: _f$deleted,
@@ -186,6 +194,7 @@ abstract class MediaBaseCopyWith<$R, $In extends MediaBase, $Out>
     String? name,
     String? fromDateTime,
     String? toDateTime,
+    bool? hidden,
     String? id,
     Map<String, AttachmentInfo>? attachments,
     bool? deleted,
@@ -247,6 +256,13 @@ class MediaFolderMapper extends SubClassMapperBase<MediaFolder> {
     key: r'to_date_time',
     opt: true,
   );
+  static bool _$hidden(MediaFolder v) => v.hidden;
+  static const Field<MediaFolder, bool> _f$hidden = Field(
+    'hidden',
+    _$hidden,
+    opt: true,
+    def: false,
+  );
   static String? _$id(MediaFolder v) => v.id;
   static const Field<MediaFolder, String> _f$id = Field(
     'id',
@@ -299,6 +315,7 @@ class MediaFolderMapper extends SubClassMapperBase<MediaFolder> {
     #name: _f$name,
     #fromDateTime: _f$fromDateTime,
     #toDateTime: _f$toDateTime,
+    #hidden: _f$hidden,
     #id: _f$id,
     #attachments: _f$attachments,
     #deleted: _f$deleted,
@@ -331,6 +348,7 @@ class MediaFolderMapper extends SubClassMapperBase<MediaFolder> {
       name: data.dec(_f$name),
       fromDateTime: data.dec(_f$fromDateTime),
       toDateTime: data.dec(_f$toDateTime),
+      hidden: data.dec(_f$hidden),
       id: data.dec(_f$id),
       attachments: data.dec(_f$attachments),
       deleted: data.dec(_f$deleted),
@@ -425,6 +443,7 @@ abstract class MediaFolderCopyWith<$R, $In extends MediaFolder, $Out>
     String? name,
     String? fromDateTime,
     String? toDateTime,
+    bool? hidden,
     String? id,
     Map<String, AttachmentInfo>? attachments,
     bool? deleted,
@@ -485,6 +504,7 @@ class _MediaFolderCopyWithImpl<$R, $Out>
     String? name,
     Object? fromDateTime = $none,
     Object? toDateTime = $none,
+    bool? hidden,
     Object? id = $none,
     Object? attachments = $none,
     bool? deleted,
@@ -500,6 +520,7 @@ class _MediaFolderCopyWithImpl<$R, $Out>
       if (name != null) #name: name,
       if (fromDateTime != $none) #fromDateTime: fromDateTime,
       if (toDateTime != $none) #toDateTime: toDateTime,
+      if (hidden != null) #hidden: hidden,
       if (id != $none) #id: id,
       if (attachments != $none) #attachments: attachments,
       if (deleted != null) #deleted: deleted,
@@ -520,6 +541,7 @@ class _MediaFolderCopyWithImpl<$R, $Out>
     name: data.get(#name, or: $value.name),
     fromDateTime: data.get(#fromDateTime, or: $value.fromDateTime),
     toDateTime: data.get(#toDateTime, or: $value.toDateTime),
+    hidden: data.get(#hidden, or: $value.hidden),
     id: data.get(#id, or: $value.id),
     attachments: data.get(#attachments, or: $value.attachments),
     deleted: data.get(#deleted, or: $value.deleted),
@@ -610,6 +632,13 @@ class MediaItemMapper extends SubClassMapperBase<MediaItem> {
     key: r'to_date_time',
     opt: true,
   );
+  static bool _$hidden(MediaItem v) => v.hidden;
+  static const Field<MediaItem, bool> _f$hidden = Field(
+    'hidden',
+    _$hidden,
+    opt: true,
+    def: false,
+  );
   static String? _$id(MediaItem v) => v.id;
   static const Field<MediaItem, String> _f$id = Field(
     'id',
@@ -671,6 +700,7 @@ class MediaItemMapper extends SubClassMapperBase<MediaItem> {
     #isNew: _f$isNew,
     #fromDateTime: _f$fromDateTime,
     #toDateTime: _f$toDateTime,
+    #hidden: _f$hidden,
     #id: _f$id,
     #attachments: _f$attachments,
     #deleted: _f$deleted,
@@ -710,6 +740,7 @@ class MediaItemMapper extends SubClassMapperBase<MediaItem> {
       isNew: data.dec(_f$isNew),
       fromDateTime: data.dec(_f$fromDateTime),
       toDateTime: data.dec(_f$toDateTime),
+      hidden: data.dec(_f$hidden),
       id: data.dec(_f$id),
       attachments: data.dec(_f$attachments),
       deleted: data.dec(_f$deleted),
@@ -814,6 +845,7 @@ abstract class MediaItemCopyWith<$R, $In extends MediaItem, $Out>
     bool? isNew,
     String? fromDateTime,
     String? toDateTime,
+    bool? hidden,
     String? id,
     Map<String, AttachmentInfo>? attachments,
     bool? deleted,
@@ -890,6 +922,7 @@ class _MediaItemCopyWithImpl<$R, $Out>
     bool? isNew,
     Object? fromDateTime = $none,
     Object? toDateTime = $none,
+    bool? hidden,
     Object? id = $none,
     Object? attachments = $none,
     bool? deleted,
@@ -911,6 +944,7 @@ class _MediaItemCopyWithImpl<$R, $Out>
       if (isNew != null) #isNew: isNew,
       if (fromDateTime != $none) #fromDateTime: fromDateTime,
       if (toDateTime != $none) #toDateTime: toDateTime,
+      if (hidden != null) #hidden: hidden,
       if (id != $none) #id: id,
       if (attachments != $none) #attachments: attachments,
       if (deleted != null) #deleted: deleted,
@@ -936,6 +970,7 @@ class _MediaItemCopyWithImpl<$R, $Out>
     isNew: data.get(#isNew, or: $value.isNew),
     fromDateTime: data.get(#fromDateTime, or: $value.fromDateTime),
     toDateTime: data.get(#toDateTime, or: $value.toDateTime),
+    hidden: data.get(#hidden, or: $value.hidden),
     id: data.get(#id, or: $value.id),
     attachments: data.get(#attachments, or: $value.attachments),
     deleted: data.get(#deleted, or: $value.deleted),
@@ -1019,31 +1054,48 @@ class MediaAttachmentMapper extends ClassMapperBase<MediaAttachment> {
     _$discTotal,
     opt: true,
   );
-  static double? _$lufs(MediaAttachment v) => v.lufs;
+  static double _$lufs(MediaAttachment v) => v.lufs;
   static const Field<MediaAttachment, double> _f$lufs = Field(
     'lufs',
     _$lufs,
     opt: true,
+    def: 0.0,
   );
-  static double? _$lra(MediaAttachment v) => v.lra;
+  static double? _$momentary(MediaAttachment v) => v.momentary;
+  static const Field<MediaAttachment, double> _f$momentary = Field(
+    'momentary',
+    _$momentary,
+    opt: true,
+  );
+  static double? _$shortTerm(MediaAttachment v) => v.shortTerm;
+  static const Field<MediaAttachment, double> _f$shortTerm = Field(
+    'shortTerm',
+    _$shortTerm,
+    key: r'short_term',
+    opt: true,
+  );
+  static double _$lra(MediaAttachment v) => v.lra;
   static const Field<MediaAttachment, double> _f$lra = Field(
     'lra',
     _$lra,
     opt: true,
+    def: 0.0,
   );
-  static double? _$truePeak(MediaAttachment v) => v.truePeak;
+  static double _$truePeak(MediaAttachment v) => v.truePeak;
   static const Field<MediaAttachment, double> _f$truePeak = Field(
     'truePeak',
     _$truePeak,
     key: r'true_peak',
     opt: true,
+    def: 0.0,
   );
-  static int? _$durationMs(MediaAttachment v) => v.durationMs;
+  static int _$durationMs(MediaAttachment v) => v.durationMs;
   static const Field<MediaAttachment, int> _f$durationMs = Field(
     'durationMs',
     _$durationMs,
     key: r'duration_ms',
     opt: true,
+    def: 0,
   );
 
   @override
@@ -1058,6 +1110,8 @@ class MediaAttachmentMapper extends ClassMapperBase<MediaAttachment> {
     #disc: _f$disc,
     #discTotal: _f$discTotal,
     #lufs: _f$lufs,
+    #momentary: _f$momentary,
+    #shortTerm: _f$shortTerm,
     #lra: _f$lra,
     #truePeak: _f$truePeak,
     #durationMs: _f$durationMs,
@@ -1077,6 +1131,8 @@ class MediaAttachmentMapper extends ClassMapperBase<MediaAttachment> {
       disc: data.dec(_f$disc),
       discTotal: data.dec(_f$discTotal),
       lufs: data.dec(_f$lufs),
+      momentary: data.dec(_f$momentary),
+      shortTerm: data.dec(_f$shortTerm),
       lra: data.dec(_f$lra),
       truePeak: data.dec(_f$truePeak),
       durationMs: data.dec(_f$durationMs),
@@ -1156,6 +1212,8 @@ abstract class MediaAttachmentCopyWith<$R, $In extends MediaAttachment, $Out>
     int? disc,
     int? discTotal,
     double? lufs,
+    double? momentary,
+    double? shortTerm,
     double? lra,
     double? truePeak,
     int? durationMs,
@@ -1184,10 +1242,12 @@ class _MediaAttachmentCopyWithImpl<$R, $Out>
     Object? trackTotal = $none,
     Object? disc = $none,
     Object? discTotal = $none,
-    Object? lufs = $none,
-    Object? lra = $none,
-    Object? truePeak = $none,
-    Object? durationMs = $none,
+    double? lufs,
+    Object? momentary = $none,
+    Object? shortTerm = $none,
+    double? lra,
+    double? truePeak,
+    int? durationMs,
   }) => $apply(
     FieldCopyWithData({
       if (fileName != null) #fileName: fileName,
@@ -1199,10 +1259,12 @@ class _MediaAttachmentCopyWithImpl<$R, $Out>
       if (trackTotal != $none) #trackTotal: trackTotal,
       if (disc != $none) #disc: disc,
       if (discTotal != $none) #discTotal: discTotal,
-      if (lufs != $none) #lufs: lufs,
-      if (lra != $none) #lra: lra,
-      if (truePeak != $none) #truePeak: truePeak,
-      if (durationMs != $none) #durationMs: durationMs,
+      if (lufs != null) #lufs: lufs,
+      if (momentary != $none) #momentary: momentary,
+      if (shortTerm != $none) #shortTerm: shortTerm,
+      if (lra != null) #lra: lra,
+      if (truePeak != null) #truePeak: truePeak,
+      if (durationMs != null) #durationMs: durationMs,
     }),
   );
   @override
@@ -1217,6 +1279,8 @@ class _MediaAttachmentCopyWithImpl<$R, $Out>
     disc: data.get(#disc, or: $value.disc),
     discTotal: data.get(#discTotal, or: $value.discTotal),
     lufs: data.get(#lufs, or: $value.lufs),
+    momentary: data.get(#momentary, or: $value.momentary),
+    shortTerm: data.get(#shortTerm, or: $value.shortTerm),
     lra: data.get(#lra, or: $value.lra),
     truePeak: data.get(#truePeak, or: $value.truePeak),
     durationMs: data.get(#durationMs, or: $value.durationMs),

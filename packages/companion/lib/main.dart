@@ -6,14 +6,14 @@ import 'package:logging/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:watch_it/watch_it.dart';
 
+import 'package:shared/shared.dart';
+
 import 'package:media_kit/media_kit.dart';
 
 import 'audio_player_service.dart';
 import 'db_repair.dart';
 import 'login_screen.dart';
 import 'my_home_page.dart';
-
-import 'package:shared/shared.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -64,6 +64,10 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   late final AppLifecycleListener _lifecycleListener;
   bool _isLoggedIn = false;
+  bool _isRepairingDatabase = false;
+  String _currentRepairTask = 'Starting database cleanup...';
+  double _repairProgress = 0.0;
+  final _log = Logger('MyApp');
 
   @override
   void initState() {
@@ -94,14 +98,31 @@ class _MyAppState extends State<MyApp> {
     );
     if (db != null) {
       di.registerSingleton<DartCouchDb>(db);
-      // Run after migration so all docs are already in the new format.
-      repairDatabase(db).ignore();
+      
+      // Show progress page while running database repair.
+      // The extra frame delay lets Flutter paint the spinner before we start
+      // heavy async work — without it the indicator never animates.
+      setState(() => _isRepairingDatabase = true);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      try {
+        await repairDatabase(db, onProgress: (task, progress) {
+          _currentRepairTask = task;
+          _repairProgress = progress;
+          if (mounted) setState(() {});
+        });
+      } catch (e) {
+        _log.severe('Database cleanup failed: $e');
+      } finally {
+        setState(() => _isRepairingDatabase = false);
+        setState(() => _isLoggedIn = true);
+      }
     } else {
       if (di.isRegistered<DartCouchDb>()) {
         di.unregister<DartCouchDb>();
       }
+      setState(() => _isLoggedIn = true);
     }
-    setState(() => _isLoggedIn = true);
   }
 
   Future<void> handleLogout() async {
@@ -120,9 +141,49 @@ class _MyAppState extends State<MyApp> {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: _isLoggedIn
-          ? MyHomePage(onLogout: handleLogout)
-          : LoginScreen(onLoginSuccess: _handleLoginSuccess),
+      home: _isRepairingDatabase
+          ? _buildRepairProgressPage()
+          : _isLoggedIn
+              ? MyHomePage(onLogout: handleLogout)
+              : LoginScreen(onLoginSuccess: _handleLoginSuccess),
+    );
+  }
+
+  Widget _buildRepairProgressPage() {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Database Cleanup'),
+        automaticallyImplyLeading: false,
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 24),
+              Text(
+                _currentRepairTask,
+                style: Theme.of(context).textTheme.titleLarge,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              LinearProgressIndicator(
+                value: _repairProgress,
+                minHeight: 8,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _repairProgress < 1.0
+                    ? '${(_repairProgress * 100).toStringAsFixed(0)}%'
+                    : 'Complete',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

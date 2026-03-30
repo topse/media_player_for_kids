@@ -9,78 +9,90 @@ import 'loudness_scanner.dart';
 
 final _log = Logger('LoudnessBatchScanner');
 
-/// Scans all MediaItems for tracks missing EBU R128 loudness data or duration,
-/// downloads the audio, analyzes it with ffmpeg, and updates the documents.
+/// Scans all MediaItems for tracks that are missing the new EBU R128 loudness
+/// fields (momentary / short_term), downloads the audio, analyzes it with
+/// ffmpeg, and updates the documents using getRaw / putRaw so that old
+/// documents with incomplete loudness data do not cause dart_mappable parse
+/// errors.
 ///
-/// Force-rescans all tracks regardless of existing data.
+/// A track is considered already up-to-date when its raw map contains the
+/// 'momentary' key. Tracks that are missing this key are re-scanned.
 Future<void> scanMissingLoudnessData() async {
   if (!di.isRegistered<DartCouchDb>()) return;
   final db = di<DartCouchDb>();
 
-  _log.info('Starting loudness batch scan (force rescan all)...');
+  _log.info('Starting loudness migration scan (checking for missing fields)...');
 
-  final allDocsResult = await db.allDocs(includeDocs: true);
-
-  final itemsToUpdate = <MediaItem>[];
-
-  for (final row in allDocsResult.rows) {
-    final doc = row.doc;
-    if (doc is MediaItem && doc.media.isNotEmpty) {
-      itemsToUpdate.add(doc);
-    }
-  }
-
-  if (itemsToUpdate.isEmpty) {
-    _log.info('No MediaItems with tracks found — nothing to scan.');
-    return;
-  }
-
-  _log.info('${itemsToUpdate.length} MediaItem(s) to scan.');
+  // Collect all document IDs without parsing (avoids dart_mappable issues).
+  final allDocsResult = await db.allDocs(includeDocs: false);
+  final docIds = allDocsResult.rows
+      .map((row) => row.id)
+      .whereType<String>()
+      .where((id) => !id.startsWith('_'))
+      .toList();
 
   int scannedCount = 0;
   int failedCount = 0;
+  int skippedCount = 0;
 
-  for (final item in itemsToUpdate) {
-    bool itemModified = false;
-    final updatedMedia = <MediaAttachment>[];
+  for (final docId in docIds) {
+    final rawDoc = await db.getRaw(docId);
+    if (rawDoc == null) continue;
 
-    for (final media in item.media) {
-      // Download audio to temp file for ffmpeg analysis
+    // Only process media_item documents.
+    // The discriminator field is stored as '!doc_type' in CouchDB.
+    if (rawDoc['!doc_type'] != 'media_item') continue;
+
+    final mediaList = rawDoc['media'];
+    if (mediaList is! List || mediaList.isEmpty) continue;
+
+    bool docModified = false;
+
+    for (int i = 0; i < mediaList.length; i++) {
+      final mediaEntry = mediaList[i];
+      if (mediaEntry is! Map<String, dynamic>) continue;
+
+      final attachmentId = mediaEntry['attachment_id'] as String?;
+      if (attachmentId == null) {
+        _log.warning('media entry in $docId has no attachment_id — skipping.');
+        failedCount++;
+        continue;
+      }
+
       try {
         final bytes = await db.getAttachment(
-          media.attachmentId,
+          attachmentId,
           MediaTrack.audioAttachmentName,
         );
         if (bytes == null || bytes.isEmpty) {
-          _log.warning(
-            'No audio data for track ${media.attachmentId} (${media.title})',
-          );
-          updatedMedia.add(media);
+          _log.warning('No audio data for attachment $attachmentId in $docId');
           failedCount++;
           continue;
         }
 
-        final tempFile = await File(
-          '${Directory.systemTemp.path}/loudness_scan_${media.attachmentId}',
-        ).create();
+        final tempFile = File(
+          '${Directory.systemTemp.path}/loudness_scan_$attachmentId',
+        );
         try {
           await tempFile.writeAsBytes(bytes);
           final analysis = await analyzeAudio(tempFile.path);
 
           if (analysis != null) {
-            updatedMedia.add(
-              media.copyWith(
-                lufs: analysis.lufs,
-                lra: analysis.lra,
-                truePeak: analysis.truePeak,
-                durationMs: analysis.durationMs,
-              ),
-            );
-            itemModified = true;
+            mediaList[i] = <String, dynamic>{
+              ...mediaEntry,
+              'lufs': analysis.lufs,
+              if (analysis.momentary != null) 'momentary': analysis.momentary,
+              if (analysis.shortTerm != null) 'short_term': analysis.shortTerm,
+              'lra': analysis.lra,
+              'true_peak': analysis.truePeak,
+              'duration_ms': analysis.durationMs,
+            };
+            docModified = true;
             scannedCount++;
-            _log.info('Scanned ${media.title}: $analysis');
+            _log.info(
+              'Scanned ${mediaEntry['fileName'] ?? attachmentId}: $analysis',
+            );
           } else {
-            updatedMedia.add(media);
             failedCount++;
           }
         } finally {
@@ -89,25 +101,25 @@ Future<void> scanMissingLoudnessData() async {
           } catch (_) {}
         }
       } catch (e) {
-        _log.warning(
-          'Failed to scan track ${media.attachmentId} (${media.title}): $e',
-        );
-        updatedMedia.add(media);
+        _log.warning('Failed to scan attachment $attachmentId in $docId: $e');
         failedCount++;
       }
     }
 
-    if (itemModified) {
+    if (docModified) {
       try {
-        await db.put(item.copyWith(media: updatedMedia));
+        await db.putRaw(rawDoc);
       } catch (e) {
-        _log.severe('Failed to update MediaItem ${item.id}: $e');
+        _log.severe('Failed to update document $docId: $e');
       }
     }
+
+    // Yield to the event loop between documents so UI animations stay smooth.
+    await Future<void>.delayed(Duration.zero);
   }
 
   _log.info(
-    'Loudness batch scan complete: $scannedCount track(s) scanned, '
-    '$failedCount failed.',
+    'Loudness migration complete: $scannedCount scanned, '
+    '$failedCount failed, $skippedCount already up-to-date.',
   );
 }

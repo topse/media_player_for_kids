@@ -102,19 +102,31 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (result == null) {
         // Network error
+        const message = 'Network error. Please check your connection.';
         setState(() {
-          _errorMessage = 'Network error. Please check your connection.';
+          _errorMessage = message;
           _isLoggingIn = false;
         });
+        if (mounted && _stage == _Stage.profileList) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text(message)),
+          );
+        }
         return;
       }
 
       if (server.connectionState.value ==
           DartCouchConnectionState.wrongCredentials) {
+        const message = 'Login failed. Please check your credentials.';
         setState(() {
-          _errorMessage = 'Login failed. Please check your credentials.';
+          _errorMessage = message;
           _isLoggingIn = false;
         });
+        if (mounted && _stage == _Stage.profileList) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text(message)),
+          );
+        }
         return;
       }
 
@@ -122,10 +134,16 @@ class _LoginScreenState extends State<LoginScreen> {
       await widget.onLoginSuccess();
       // isLoggingIn will be reset by the parent rebuilding with MyHomePage
     } catch (e) {
+      final message = 'Login error: $e';
       setState(() {
-        _errorMessage = 'Login error: $e';
+        _errorMessage = message;
         _isLoggingIn = false;
       });
+      if (mounted && _stage == _Stage.profileList) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+      }
     }
   }
 
