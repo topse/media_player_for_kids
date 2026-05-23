@@ -48,6 +48,13 @@ class MediaBaseIcon extends StatefulWidget {
   /// border-only, or both.
   final bool showNewStar;
 
+  /// When non-null, overlays a small constraint badge (timer icon) in the
+  /// bottom-left corner, filled with the given colour.
+  ///
+  /// Callers choose the colour to distinguish direct constraints (e.g.
+  /// [Colors.deepPurple]) from inherited ones (e.g. [Colors.grey]).
+  final Color? constraintBadgeColor;
+
   const MediaBaseIcon({
     super.key,
     required this.media,
@@ -59,6 +66,7 @@ class MediaBaseIcon extends StatefulWidget {
     this.overlayNumber,
     this.isNew = false,
     this.showNewStar = false,
+    this.constraintBadgeColor,
   });
 
   @override
@@ -197,6 +205,32 @@ class _MediaBaseIconState extends State<MediaBaseIcon> {
     );
   }
 
+  Widget _buildConstraintBadge() {
+    return Positioned(
+      left: 2,
+      bottom: 2,
+      child: Container(
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: widget.constraintBadgeColor!.withValues(alpha: 0.9),
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.6),
+              blurRadius: 4,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.timer,
+          size: 14,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+
   Widget _buildNewStarOverlay() {
     return Positioned(
       left: 4,
@@ -238,7 +272,11 @@ class _MediaBaseIconState extends State<MediaBaseIcon> {
   @override
   Widget build(BuildContext context) {
     Widget child = _buildContent();
-    if (widget.showTypeBadge || widget.overlayNumber != null) {
+    final hasOverlays = widget.showTypeBadge ||
+        widget.overlayNumber != null ||
+        widget.showNewStar ||
+        widget.constraintBadgeColor != null;
+    if (hasOverlays) {
       child = Stack(
         fit: StackFit.expand,
         children: [
@@ -246,12 +284,8 @@ class _MediaBaseIconState extends State<MediaBaseIcon> {
           if (widget.overlayNumber != null) _buildNumberOverlay(),
           if (widget.showTypeBadge) _buildBadge(),
           if (widget.showNewStar) _buildNewStarOverlay(),
+          if (widget.constraintBadgeColor != null) _buildConstraintBadge(),
         ],
-      );
-    } else if (widget.showNewStar) {
-      child = Stack(
-        fit: StackFit.expand,
-        children: [child, _buildNewStarOverlay()],
       );
     }
     if (widget.isNew) {
@@ -279,3 +313,4 @@ class _MediaBaseIconState extends State<MediaBaseIcon> {
     return child;
   }
 }
+

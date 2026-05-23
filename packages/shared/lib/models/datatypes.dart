@@ -1,5 +1,6 @@
 import 'package:dart_mappable/dart_mappable.dart';
 import 'package:dart_couch/dart_couch.dart';
+import '../constraints/hearing_constraint.dart';
 
 part 'datatypes.mapper.dart';
 
@@ -14,7 +15,7 @@ class CoverImageReference {
   });
 }
 
-@MappableClass(discriminatorValue: "media_base")
+@MappableClass(discriminatorValue: "media_base", ignoreNull: true)
 abstract class MediaBase extends CouchDocumentBase with MediaBaseMappable {
   static const String coverAttachmentName = 'cover';
 
@@ -33,6 +34,9 @@ abstract class MediaBase extends CouchDocumentBase with MediaBaseMappable {
 
   final bool hidden;
 
+  @MappableField(key: 'hearing_constraint')
+  final HearingConstraint? hearingConstraint;
+
   MediaBase({
     this.parent,
     required this.sortHint,
@@ -40,6 +44,7 @@ abstract class MediaBase extends CouchDocumentBase with MediaBaseMappable {
     this.fromDateTime,
     this.toDateTime,
     this.hidden = false,
+    this.hearingConstraint,
     super.id,
     super.attachments,
     super.deleted,
@@ -122,7 +127,7 @@ abstract class MediaBase extends CouchDocumentBase with MediaBaseMappable {
   static final fromJson = MediaBaseMapper.fromJson;
 }
 
-@MappableClass(discriminatorValue: "media_folder")
+@MappableClass(discriminatorValue: "media_folder", ignoreNull: true)
 class MediaFolder extends MediaBase with MediaFolderMappable {
   final bool showItemNumbering;
 
@@ -134,6 +139,7 @@ class MediaFolder extends MediaBase with MediaFolderMappable {
     super.fromDateTime,
     super.toDateTime,
     super.hidden,
+    super.hearingConstraint,
     super.id,
     super.attachments,
     super.deleted,
@@ -198,7 +204,7 @@ class MediaFolder extends MediaBase with MediaFolderMappable {
 ///
 /// The media-List gives the order in which the attachments should be used.
 /// The Attachments have uuids as names.
-@MappableClass(discriminatorValue: "media_item")
+@MappableClass(discriminatorValue: "media_item", ignoreNull: true)
 class MediaItem extends MediaBase with MediaItemMappable {
   /// stores meta data of attached media files. Media files itself are stored as attachments.
   final List<MediaAttachment> media;
@@ -228,6 +234,7 @@ class MediaItem extends MediaBase with MediaItemMappable {
     super.fromDateTime,
     super.toDateTime,
     super.hidden,
+    super.hearingConstraint,
     super.id,
     super.attachments,
     super.deleted,
@@ -374,5 +381,9 @@ class MediaAttachment with MediaAttachmentMappable {
     this.durationMs = 0,
   }) : _title = title;
 
-  String get title => _title ?? fileName;
+  String get title {
+    if (_title != null) return _title;
+    final dotIndex = fileName.lastIndexOf('.');
+    return dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
+  }
 }

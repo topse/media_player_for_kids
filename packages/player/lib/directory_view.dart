@@ -3,16 +3,33 @@ import 'dart:async';
 import 'package:dart_couch_widgets/dart_couch.dart';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
+import 'package:player/admin/admin_override_service.dart';
+import 'package:player/hearing_stats_service.dart';
 import 'package:player/media_player_page.dart';
 import 'package:player/play_position_service.dart';
 import 'package:player/widgets/media_app_bar.dart';
 import 'package:shared/models/datatypes.dart';
-import 'package:shared/shared.dart' show MediaBaseIcon, buildEffectiveIsNewMap;
+import 'package:shared/shared.dart'
+    show
+        ConstraintEvaluator,
+        ConstraintStatus,
+        EvaluationResult,
+        HearingStats,
+        MediaBaseIcon,
+        buildEffectiveIsNewMap;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:watch_it/watch_it.dart';
 
 final _log = Logger('DirectoryView');
 
+/// Child-facing media browsing screen.
+///
+/// Renders the catalog as a grid of [MediaBase] items filtered by visibility
+/// (`fromDateTime` / `toDateTime` and the `hidden` flag, unless the
+/// `ignoreDateSettings` admin override is on). Drives navigation into
+/// subfolders and into [MediaPlayerPage] for items, and renders the per-item
+/// soft-hint constraint indicators (lock overlay when blocked, red timer icon
+/// when the item can no longer be finished — see [_cannotFinishWithGrace]).
 class DirectoryView extends StatefulWidget {
   const DirectoryView({super.key});
 
@@ -34,6 +51,8 @@ class _DirectoryViewState extends State<DirectoryView>
     WidgetsBinding.instance.addObserver(this);
     _createSubscription();
     di<PlayPositionService>().addListener(_onPlayPositionsChanged);
+    di<AdminOverrideService>().addListener(_onPlayPositionsChanged);
+    di<HearingStatsService>().addListener(_onPlayPositionsChanged);
   }
 
   void _onPlayPositionsChanged() {
@@ -97,6 +116,7 @@ class _DirectoryViewState extends State<DirectoryView>
           '  doc id=${doc.id} rev=${doc.rev} attachments=${doc.attachments?.keys.toList()}',
         );
       }
+
       setState(() {
         entries = docs;
         // Reset to root if the current folder (or any ancestor) became hidden.
@@ -154,11 +174,73 @@ class _DirectoryViewState extends State<DirectoryView>
 
   @override
   void dispose() {
+    di<HearingStatsService>().removeListener(_onPlayPositionsChanged);
+    di<AdminOverrideService>().removeListener(_onPlayPositionsChanged);
     di<PlayPositionService>().removeListener(_onPlayPositionsChanged);
     WidgetsBinding.instance.removeObserver(this);
     _visibilityTimer?.cancel();
     _dbSubscription?.cancel();
     super.dispose();
+  }
+
+  EvaluationResult _evalWithAncestors(
+    MediaBase item,
+    Map<String, MediaBase> allDocuments,
+  ) {
+    if (di<AdminOverrideService>().ignoreConstraints) {
+      return EvaluationResult.allowed;
+    }
+    final statsService = di<HearingStatsService>();
+    return const ConstraintEvaluator().effectiveEvaluation(
+      item: item,
+      allDocuments: allDocuments,
+      allStats: Map.fromEntries(
+        allDocuments.keys.map(
+          (id) => MapEntry(id, statsService.statsFor(id)),
+        ),
+      ),
+      globalConstraint: statsService.globalConstraint,
+      globalStats: statsService.globalStats(),
+    );
+  }
+
+  /// Whether the kid can no longer hear [item] to its natural end, even with
+  /// the configured grace period. Drives the red timer marker in the grid.
+  ///
+  /// Returns `false` when the item is blocked (a separate lock overlay handles
+  /// that), when no quantifiable allowance applies, or when remaining time
+  /// (plus grace) still covers the item.
+  bool _cannotFinishWithGrace(
+    MediaBase item,
+    Map<String, MediaBase> allDocuments,
+    int itemDurationMs,
+  ) {
+    if (itemDurationMs <= 0) return false;
+    if (di<AdminOverrideService>().ignoreConstraints) return false;
+    final evalResult = _evalWithAncestors(item, allDocuments);
+    if (evalResult.status == ConstraintStatus.blocked) return false;
+
+    final statsService = di<HearingStatsService>();
+    final allStats = Map<String, HearingStats?>.fromEntries(
+      allDocuments.keys.map((id) => MapEntry(id, statsService.statsFor(id))),
+    );
+
+    final effectiveRemainingMs = const ConstraintEvaluator()
+        .effectiveRemainingAllowance(
+      item: item,
+      allDocuments: allDocuments,
+      allStats: allStats,
+      globalConstraint: statsService.globalConstraint,
+      globalStats: statsService.globalStats(),
+    );
+    if (effectiveRemainingMs == null) return false;
+
+    final graceMs = (di<SharedPreferencesWithCache>().getInt(
+              AdminOverrideService.kGracePeriodMinutes,
+            ) ??
+            AdminOverrideService.defaultGracePeriodMinutes) *
+        60000;
+    return effectiveRemainingMs + graceMs < itemDurationMs;
   }
 
   @override
@@ -175,16 +257,19 @@ class _DirectoryViewState extends State<DirectoryView>
 
     // Filter to get only root-level items (parent is null), respecting date visibility
     final now = DateTime.now();
+    final overrides = di<AdminOverrideService>();
     final effectivelyNewById = buildEffectiveIsNewMap(
       allDocuments,
-      includeInTraversal: (media) => media.isVisibleAt(now) && !media.hidden,
+      includeInTraversal: (media) =>
+          (overrides.ignoreDateSettings || media.isVisibleAt(now)) &&
+          !media.hidden,
     );
     final rootItems =
         entries!
             .where(
               (e) =>
                   e.parent == parentNodeId &&
-                  e.isVisibleAt(now) &&
+                  (overrides.ignoreDateSettings || e.isVisibleAt(now)) &&
                   !e.hidden,
             )
             .toList()
@@ -222,12 +307,34 @@ class _DirectoryViewState extends State<DirectoryView>
             : null,
         ancestors: ancestors,
         allDocuments: allDocuments,
+        // When the kid is browsing inside a folder, feed that folder as the
+        // indicator's context so its nearest-wins constraint contributes.
+        // At root (parentNodeId == null) only the global constraint applies.
+        currentItem: parentFolder,
       ),
       body: SafeArea(
         top: false,
-        child: rootItems.isEmpty
-            ? const Center(child: Text('No media items found'))
-            : OrientationBuilder(
+        child: Column(
+          children: [
+            if (overrides.anyOverrideActive)
+              MaterialBanner(
+                backgroundColor: Colors.orange[100],
+                leading:
+                    const Icon(Icons.warning_amber, color: Colors.orange),
+                content: Text(
+                  [
+                    if (overrides.ignoreConstraints) 'Hörregeln deaktiviert',
+                    if (overrides.ignoreDateSettings)
+                      'Datumssperren deaktiviert',
+                  ].join(' · '),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                actions: const [SizedBox.shrink()],
+              ),
+            Expanded(
+              child: rootItems.isEmpty
+                  ? const Center(child: Text('No media items found'))
+                  : OrientationBuilder(
                 builder: (context, orientation) {
                   final prefs = di<SharedPreferencesWithCache>();
                   final crossAxisCount = orientation == Orientation.portrait
@@ -247,6 +354,14 @@ class _DirectoryViewState extends State<DirectoryView>
                       final progress = (item is MediaItem && item.isAudioBook)
                           ? _computeProgress(item)
                           : null;
+                      final constraintResult =
+                          _evalWithAncestors(item, allDocuments);
+                      final itemDurationMs = item is MediaItem
+                          ? item.media.fold<int>(
+                              0, (s, t) => s + t.durationMs)
+                          : 0;
+                      final cannotFinish = _cannotFinishWithGrace(
+                          item, allDocuments, itemDurationMs);
 
                       return _MediaGridItem(
                         key: ValueKey(item.id),
@@ -255,7 +370,21 @@ class _DirectoryViewState extends State<DirectoryView>
                         itemNumber: showItemNumbering ? index + 1 : null,
                         progress: progress,
                         isNew: effectivelyNewById[item.id] ?? false,
+                        constraintResult: constraintResult,
+                        cannotFinish: cannotFinish,
                         onTap: () {
+                          if (constraintResult.status ==
+                              ConstraintStatus.blocked) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  constraintResult.humanReadableReason ??
+                                      'Jetzt nicht verfügbar',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
                           if (item is MediaFolder) {
                             setState(() {
                               parentNodeId = item.id;
@@ -264,8 +393,10 @@ class _DirectoryViewState extends State<DirectoryView>
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) =>
-                                    MediaPlayerPage(item: item),
+                                builder: (context) => MediaPlayerPage(
+                                  item: item,
+                                  allDocuments: allDocuments,
+                                ),
                               ),
                             );
                           }
@@ -275,6 +406,69 @@ class _DirectoryViewState extends State<DirectoryView>
                   );
                 },
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Red timer badge shown in the bottom-left of a grid item when the kid's
+/// remaining allowance (plus grace period) is no longer enough to hear the
+/// item to its natural end.
+class _CannotFinishMarker extends StatelessWidget {
+  const _CannotFinishMarker();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.red.withValues(alpha: 0.95),
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.5),
+            blurRadius: 4,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: const Icon(
+        Icons.timer,
+        size: 18,
+        color: Colors.white,
+      ),
+    );
+  }
+}
+
+class _AudiobookProgressBar extends StatelessWidget {
+  final double progress;
+
+  const _AudiobookProgressBar({required this.progress});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDone = progress >= 1.0;
+    // Clamp visual width: min 10% so tiny progress is visible,
+    // max 90% so "almost done" is clearly distinct from "done".
+    final visualWidth = isDone
+        ? 1.0
+        : progress.clamp(0.10, 0.90);
+    final color = isDone ? Colors.green : Colors.blue;
+    final colorDark = isDone ? Colors.green[900]! : Colors.blue[900]!;
+
+    return FractionallySizedBox(
+      alignment: Alignment.centerLeft,
+      widthFactor: visualWidth,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(height: 3, color: colorDark),
+          Container(height: 6, color: color),
+        ],
       ),
     );
   }
@@ -287,6 +481,8 @@ class _MediaGridItem extends StatelessWidget {
   final int? itemNumber;
   final double? progress;
   final bool isNew;
+  final EvaluationResult? constraintResult;
+  final bool cannotFinish;
 
   const _MediaGridItem({
     super.key,
@@ -296,6 +492,8 @@ class _MediaGridItem extends StatelessWidget {
     this.itemNumber,
     this.progress,
     this.isNew = false,
+    this.constraintResult,
+    this.cannotFinish = false,
   });
 
   @override
@@ -357,17 +555,29 @@ class _MediaGridItem extends StatelessWidget {
                           left: 0,
                           bottom: 0,
                           right: 0,
-                          child: FractionallySizedBox(
-                            alignment: Alignment.centerLeft,
-                            widthFactor: progress!,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(height: 2, color: Colors.green[900]),
-                                Container(height: 2, color: Colors.green),
-                              ],
+                          child: _AudiobookProgressBar(progress: progress!),
+                        ),
+                      // Blocked overlay — lock icon only, no text
+                      if (constraintResult?.status ==
+                          ConstraintStatus.blocked)
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.lock,
+                              color: Colors.white,
+                              size: 40,
                             ),
                           ),
+                        )
+                      else if (cannotFinish)
+                        const Positioned(
+                          left: 4,
+                          bottom: 4,
+                          child: _CannotFinishMarker(),
                         ),
                     ],
                   ),

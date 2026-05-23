@@ -18,7 +18,7 @@ resolution: workspace
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 2.6.0+18
+version: 2.8.0+18
 
 environment:
   sdk: ">=3.10.4 <4.0.0"
@@ -36,7 +36,7 @@ dependencies:
     git:
       url: https://github.com/topse/dart_couch
       path: packages/dart_couch_widgets
-  dart_mappable: ^4.6.1
+  dart_mappable: ^4.7.0
   watch_it: ^2.4.1
   shared_preferences: ^2.5.4
   path_provider: ^2.1.5
@@ -65,7 +65,7 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
   build_runner: ^2.10.5
-  dart_mappable_builder: ^4.6.3
+  dart_mappable_builder: ^4.7.0
   flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the

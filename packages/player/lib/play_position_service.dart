@@ -6,6 +6,16 @@ import 'package:watch_it/watch_it.dart';
 
 final _log = Logger('PlayPositionService');
 
+/// Persists per-audiobook playback positions and "done" markers.
+///
+/// Backed by a single CouchDB local document (`_local/playposition`) keyed
+/// by `itemId`. Each entry is either `{position: {track, seconds}}` (resume
+/// point) or `{done: true}` (item heard to the end). The companion does not
+/// read this document — positions are local to the device.
+///
+/// Writes are gated by the minimum-play threshold from
+/// [HearingStatsService] — see player CLAUDE.md for the rules around
+/// "done" preservation and in-progress upgrades.
 class PlayPositionService extends ChangeNotifier {
   static const _docId = '_local/playposition';
 

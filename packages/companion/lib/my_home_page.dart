@@ -14,6 +14,7 @@ import 'media_item_dialog.dart';
 import 'package:shared/shared.dart';
 import 'split_view.dart';
 import 'audio_playback_controls.dart';
+import 'global_constraint_page.dart';
 
 class MyHomePage extends StatefulWidget {
   final Future<void> Function() onLogout;
@@ -221,10 +222,37 @@ class _MyHomePageState extends State<MyHomePage> {
         title: const Text('Media Player for kids Companion'),
         actions: [
           const AudioPlaybackControls(),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
-            onPressed: widget.onLogout,
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'global_constraints') {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const GlobalConstraintPage(),
+                ));
+              } else if (value == 'logout') {
+                widget.onLogout();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'global_constraints',
+                child: ListTile(
+                  leading: Icon(Icons.public),
+                  title: Text('Globale Einschränkungen'),
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'logout',
+                child: ListTile(
+                  leading: Icon(Icons.logout),
+                  title: Text('Abmelden'),
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -288,6 +316,15 @@ class _MyHomePageState extends State<MyHomePage> {
                           iconSize: 40,
                           isNew: effectivelyNewById[media.id] ?? false,
                           showNewStar: false,
+                          constraintBadgeColor: media.hearingConstraint != null
+                              ? Colors.deepPurple
+                              : ConstraintEvaluator.findNearestConstraintHolder(
+                                        item: media,
+                                        allDocuments: _allDocumentsMap,
+                                      ) !=
+                                      null
+                                  ? Colors.grey
+                                  : null,
                         ),
                       ),
                       trailing: IntrinsicWidth(

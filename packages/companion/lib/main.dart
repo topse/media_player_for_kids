@@ -20,10 +20,7 @@ void main() async {
   MediaKit.ensureInitialized();
   DartCouchDb.ensureInitialized();
 
-  MediaBaseMapper.ensureInitialized();
-  MediaItemMapper.ensureInitialized();
-  MediaFolderMapper.ensureInitialized();
-  MediaTrackMapper.ensureInitialized();
+  initializeMappers();
 
   // Initialize and register audio player service
   final audioPlayer = AudioPlayerService();
@@ -93,12 +90,10 @@ class _MyAppState extends State<MyApp> {
 
   Future<void> _handleLoginSuccess() async {
     final server = di<DartCouchServer>() as HttpDartCouchServer;
-    final db = await server.db(
-      DartCouchDb.usernameToDbName(server.username!),
-    );
+    final db = await server.db(DartCouchDb.usernameToDbName(server.username!));
     if (db != null) {
       di.registerSingleton<DartCouchDb>(db);
-      
+
       // Show progress page while running database repair.
       // The extra frame delay lets Flutter paint the spinner before we start
       // heavy async work — without it the indicator never animates.
@@ -106,11 +101,14 @@ class _MyAppState extends State<MyApp> {
       await Future<void>.delayed(const Duration(milliseconds: 100));
 
       try {
-        await repairDatabase(db, onProgress: (task, progress) {
-          _currentRepairTask = task;
-          _repairProgress = progress;
-          if (mounted) setState(() {});
-        });
+        await repairDatabase(
+          db,
+          onProgress: (task, progress) {
+            _currentRepairTask = task;
+            _repairProgress = progress;
+            if (mounted) setState(() {});
+          },
+        );
       } catch (e) {
         _log.severe('Database cleanup failed: $e');
       } finally {
@@ -138,14 +136,15 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Media Player for kids Companion',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
       home: _isRepairingDatabase
           ? _buildRepairProgressPage()
           : _isLoggedIn
-              ? MyHomePage(onLogout: handleLogout)
-              : LoginScreen(onLoginSuccess: _handleLoginSuccess),
+          ? MyHomePage(onLogout: handleLogout)
+          : LoginScreen(onLoginSuccess: _handleLoginSuccess),
     );
   }
 
@@ -169,10 +168,7 @@ class _MyAppState extends State<MyApp> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-              LinearProgressIndicator(
-                value: _repairProgress,
-                minHeight: 8,
-              ),
+              LinearProgressIndicator(value: _repairProgress, minHeight: 8),
               const SizedBox(height: 8),
               Text(
                 _repairProgress < 1.0

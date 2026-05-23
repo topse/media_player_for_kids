@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
+import 'package:player/admin/admin_override_service.dart';
 import 'package:player/audio_device_service.dart';
 import 'package:player/audio_types.dart';
 import 'package:watch_it/watch_it.dart';
@@ -48,6 +49,7 @@ class _AudioDeviceAdminPageState extends State<AudioDeviceAdminPage> {
           appBar: AppBar(title: const Text('Audio Output Devices')),
           body: Column(
             children: [
+              _EmergencyOverrideCard(),
               if (svc.bluetoothPermissionRequired)
                 _BluetoothPermissionBanner(
                   onGrant: () => svc.requestBluetoothPermission(),
@@ -81,6 +83,72 @@ class _AudioDeviceAdminPageState extends State<AudioDeviceAdminPage> {
                       ),
               ),
             ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// _EmergencyOverrideCard
+// ---------------------------------------------------------------------------
+
+class _EmergencyOverrideCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: di<AdminOverrideService>(),
+      builder: (context, _) {
+        final overrides = di<AdminOverrideService>();
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+              side: const BorderSide(color: Colors.orange, width: 2),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    const Icon(Icons.warning_amber, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Notfall-Ausnahmen',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ]),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Nur für den Notfall aktivieren. Bitte nach der Reise wieder deaktivieren.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  CheckboxListTile(
+                    title: const Text('Hörregeln ignorieren'),
+                    subtitle: const Text(
+                      'Alle Hör-Einschränkungen sind deaktiviert',
+                    ),
+                    value: overrides.ignoreConstraints,
+                    onChanged: (v) =>
+                        overrides.setIgnoreConstraints(v ?? false),
+                    activeColor: Colors.orange,
+                  ),
+                  CheckboxListTile(
+                    title: const Text('Datumssperren ignorieren'),
+                    subtitle: const Text(
+                      'Inhalte mit Zeitfenstern (von/bis) sind sichtbar',
+                    ),
+                    value: overrides.ignoreDateSettings,
+                    onChanged: (v) =>
+                        overrides.setIgnoreDateSettings(v ?? false),
+                    activeColor: Colors.orange,
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },

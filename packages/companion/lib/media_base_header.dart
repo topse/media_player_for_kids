@@ -10,6 +10,7 @@ import 'package:watch_it/watch_it.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 
+import 'constraint_editor.dart';
 import 'media_folder_dialog.dart';
 import 'media_item_dialog.dart';
 
@@ -416,6 +417,63 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
           ),
         ),
         const Divider(),
+        Builder(builder: (context) {
+          final ownConstraint = widget.media.hearingConstraint;
+          final inheritedHolder = ownConstraint == null
+              ? ConstraintEvaluator.findNearestConstraintHolder(
+                  item: widget.media,
+                  allDocuments: widget.allDocuments,
+                )
+              : null;
+
+          return ListTile(
+            leading: const Icon(Icons.timer_outlined),
+            title: Row(
+              children: [
+                const Text('Hörregeln'),
+                if (inheritedHolder != null) ...[
+                  const SizedBox(width: 8),
+                  Chip(
+                    label: Text('geerbt von „${inheritedHolder.name}"'),
+                    labelStyle: const TextStyle(fontSize: 11),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    padding: EdgeInsets.zero,
+                  ),
+                ],
+              ],
+            ),
+            subtitle: Text(
+              ownConstraint != null
+                  ? const ConstraintDescriptionGenerator()
+                      .describe(ownConstraint)
+                  : inheritedHolder?.hearingConstraint != null
+                      ? const ConstraintDescriptionGenerator()
+                          .describe(inheritedHolder!.hearingConstraint!)
+                      : 'Keine Einschränkungen',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (ownConstraint != null)
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 20),
+                    color: Colors.red[700],
+                    tooltip: 'Hörregeln entfernen',
+                    onPressed: () => _setHearingConstraint(null),
+                  ),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
+            onTap: () => _openConstraintEditor(
+              context,
+              inheritedConstraint: inheritedHolder?.hearingConstraint,
+              inheritedFromName: inheritedHolder?.name,
+            ),
+          );
+        }),
+        const Divider(),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Row(
@@ -545,5 +603,30 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
         const Divider(),
       ],
     );
+  }
+
+  void _openConstraintEditor(
+    BuildContext context, {
+    HearingConstraint? inheritedConstraint,
+    String? inheritedFromName,
+  }) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ConstraintEditorPage(
+        initialConstraint: widget.media.hearingConstraint,
+        isFolder: widget.media is MediaFolder,
+        onChanged: _setHearingConstraint,
+        inheritedConstraint: inheritedConstraint,
+        inheritedFromName: inheritedFromName,
+      ),
+    ));
+  }
+
+  Future<void> _setHearingConstraint(HearingConstraint? constraint) async {
+    final media = widget.media;
+    if (media is MediaFolder) {
+      await di<DartCouchDb>().put(media.copyWith(hearingConstraint: constraint));
+    } else if (media is MediaItem) {
+      await di<DartCouchDb>().put(media.copyWith(hearingConstraint: constraint));
+    }
   }
 }

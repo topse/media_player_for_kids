@@ -6,30 +6,36 @@ import 'package:dart_couch_widgets/dart_couch.dart';
 import 'package:dart_couch_widgets/dart_couch_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:player/directory_view.dart';
+import 'package:player/kid_name_gate.dart';
 
+import 'package:player/admin/admin_override_service.dart';
 import 'package:player/audio_player_service.dart';
+import 'package:player/hearing_stats_service.dart';
 import 'package:player/play_position_service.dart';
 import 'package:shared/shared.dart';
 import 'package:player/audio_device_service.dart';
 import 'package:player/admin/audio_device_admin_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 import 'package:watch_it/watch_it.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   DartCouchDb.ensureInitialized();
 
-  MediaBaseMapper.ensureInitialized();
-  MediaItemMapper.ensureInitialized();
-  MediaFolderMapper.ensureInitialized();
-  MediaTrackMapper.ensureInitialized();
+  initializeMappers();
 
   Logger.root.level = Level.FINEST; // defaults to Level.INFO
   Logger.root.onRecord.listen((record) {
     LineSplitter ls = LineSplitter();
     for (final line in ls.convert(record.message)) {
+      if (line.startsWith('dart_couch')) {
+        // Don't log dart stuff, it's too verbose. Adjust the filter as needed when debugging.
+        continue;
+      }
       // ignore: avoid_print
       print('${record.loggerName} ${record.level.name}: ${record.time}: $line');
     }
@@ -47,6 +53,11 @@ void main() async {
         'audio_device_configs',
         'grid_columns_portrait',
         'grid_columns_landscape',
+        'device_uuid',
+        AdminOverrideService.kIgnoreConstraints,
+        AdminOverrideService.kIgnoreDateSettings,
+        AdminOverrideService.kGracePeriodMinutes,
+        HearingStatsService.kMinPlaySeconds,
       },
     ),
   );
@@ -56,6 +67,8 @@ void main() async {
   // player can attach a listener to it during init().
   di.registerSingleton<AudioDeviceService>(await AudioDeviceService.create());
   di.registerSingleton<AudioPlayerService>(await AudioPlayerService.init());
+  di.registerSingleton<AdminOverrideService>(AdminOverrideService());
+  di.registerSingleton<HearingStatsService>(HearingStatsService());
 
   runApp(const MainApp());
 }
@@ -125,16 +138,30 @@ class _MainAppState extends State<MainApp> {
                       final playPos = PlayPositionService();
                       di.registerSingleton<PlayPositionService>(playPos);
                       await playPos.load();
+
+                      // Device identity: generate UUID on first run.
+                      final prefs = di<SharedPreferencesWithCache>();
+                      var deviceUuid = prefs.getString('device_uuid');
+                      if (deviceUuid == null) {
+                        deviceUuid = const Uuid().v4();
+                        await prefs.setString('device_uuid', deviceUuid);
+                      }
+
+                      // Initialise hearing stats from the playlog document.
+                      await di<HearingStatsService>().init(deviceUuid);
+
                     } else {
                       di.unregister<DartCouchDb>();
                     }
                   },
                   child: server is OfflineFirstServer
-                      ? ReplicationStateProxyWidget(
-                          server: server,
-                          waitForUsersDatabase: true,
-                          keepScreenOn: true,
-                          child: const DirectoryView(),
+                      ? KidNameGate(
+                          child: ReplicationStateProxyWidget(
+                            server: server,
+                            waitForUsersDatabase: true,
+                            keepScreenOn: true,
+                            child: const DirectoryView(),
+                          ),
                         )
                       : const DirectoryView(),
                 ),
@@ -441,6 +468,9 @@ class AdminSettingsPage extends StatefulWidget {
 class _AdminSettingsPageState extends State<AdminSettingsPage> {
   late int _portraitColumns;
   late int _landscapeColumns;
+  late int _minPlaySeconds;
+  late int _gracePeriodMinutes;
+  String? _versionLabel;
 
   @override
   void initState() {
@@ -448,6 +478,20 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
     final prefs = di<SharedPreferencesWithCache>();
     _portraitColumns = prefs.getInt('grid_columns_portrait') ?? 2;
     _landscapeColumns = prefs.getInt('grid_columns_landscape') ?? 4;
+    _minPlaySeconds = prefs.getInt(HearingStatsService.kMinPlaySeconds) ??
+        HearingStatsService.defaultMinPlaySeconds;
+    _gracePeriodMinutes =
+        prefs.getInt(AdminOverrideService.kGracePeriodMinutes) ??
+        AdminOverrideService.defaultGracePeriodMinutes;
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (!mounted) return;
+    setState(() {
+      _versionLabel = 'Version ${info.version} (Build ${info.buildNumber})';
+    });
   }
 
   Future<void> _setPortraitColumns(int value) async {
@@ -462,6 +506,22 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
     setState(() => _landscapeColumns = value);
     await di<SharedPreferencesWithCache>().setInt(
       'grid_columns_landscape',
+      value,
+    );
+  }
+
+  Future<void> _setMinPlaySeconds(int value) async {
+    setState(() => _minPlaySeconds = value);
+    await di<SharedPreferencesWithCache>().setInt(
+      HearingStatsService.kMinPlaySeconds,
+      value,
+    );
+  }
+
+  Future<void> _setGracePeriodMinutes(int value) async {
+    setState(() => _gracePeriodMinutes = value);
+    await di<SharedPreferencesWithCache>().setInt(
+      AdminOverrideService.kGracePeriodMinutes,
       value,
     );
   }
@@ -542,6 +602,80 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
             onChanged: (v) => _setLandscapeColumns(v.round()),
           ),
           const Divider(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Row(
+              children: [
+                const Icon(Icons.hearing, color: Colors.grey),
+                const SizedBox(width: 16),
+                Text(
+                  'Hörregeln',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: Text(
+              'Mindestdauer, ab der ein Abspielvorgang gezählt wird und '
+              'der Abspielfortschritt eines Hörbuchs gespeichert wird. '
+              'Titel die kürzer sind als dieser Wert zählen immer.',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: Colors.grey),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text(
+              _minPlaySeconds == 0
+                  ? 'Mindestdauer: deaktiviert'
+                  : 'Mindestdauer: $_minPlaySeconds s',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+          Slider(
+            value: _minPlaySeconds.toDouble(),
+            min: 0,
+            max: 120,
+            divisions: 24,
+            label: _minPlaySeconds == 0 ? 'aus' : '$_minPlaySeconds s',
+            onChanged: (v) => _setMinPlaySeconds(v.round()),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: Text(
+              'Wenn die Hörzeit abläuft und der Titel hat noch weniger als '
+              'diese Zeit übrig, darf das Kind fertig hören.',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: Colors.grey),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text(
+              'Kulanzzeit: $_gracePeriodMinutes min',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+          Slider(
+            value: _gracePeriodMinutes.toDouble(),
+            min: 1,
+            max: 30,
+            divisions: 29,
+            label: '$_gracePeriodMinutes min',
+            onChanged: (v) => _setGracePeriodMinutes(v.round()),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: Text(_versionLabel ?? 'Version …'),
+            dense: true,
+          ),
         ],
       ),
     );

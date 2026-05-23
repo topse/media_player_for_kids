@@ -1,7 +1,6 @@
 import 'package:dart_couch_widgets/dart_couch.dart';
 import 'package:logging/logging.dart';
 import 'package:shared/shared.dart';
-import 'loudness_batch_scanner.dart';
 
 final _log = Logger('DbRepair');
 

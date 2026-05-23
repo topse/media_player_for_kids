@@ -1,113 +1,94 @@
-# Codebase Analysis: Media Player for Kids Companion
+# Media Player for Kids — Companion Package
 
-## Architecture Overview
+## Scope of this document
 
-This is a Flutter application serving as a companion app for a media player designed for children. The companion app manages the backend content and configuration for the player app (located in `../player`), while sharing the data model defined in `../shared`.
+This file captures **requirements and decisions** for the parent-facing desktop companion app. It is requirements-first: when changing code, preserve the behaviors listed here over local implementation convenience.
 
-### Key Components
+It does **not** describe *how* behaviors are implemented. Architecture diagrams, technical-stack laundry lists, file layout under `lib/`, and other mechanics belong in code and in docstrings next to the relevant lines — not here. If a fact is only useful to read the code, it belongs in the code.
 
-1. **Main Application Structure**
-   - Entry point: `main.dart`
-   - Uses `watch_it` for dependency injection
-   - Audio playback preview via `media_kit` library
+Cross-package contracts (the constraint DSL, evaluator semantics, play log data model) live in the root [CLAUDE.md](../../CLAUDE.md). Player-specific requirements live in [packages/player/CLAUDE.md](../player/CLAUDE.md).
 
-2. **Core Features**
-   - Tree-based media organization (folders and items)
-   - Audio file import with loudness scanning
-   - Metadata and cover image management
-   - Date-based visibility filtering for scheduled content
-   - Audio playback controls for preview
+## Purpose
 
-3. **Data Model**
-   - `MediaBase`: Abstract base class for media entities
-   - `MediaFolder`: Container for organizing media structure
-   - `MediaItem`: Contains audio files and playback settings
-   - `MediaTrack`: Represents individual audio files
+The companion is the parent's desktop app for managing the media catalog and parental controls that the child's player consumes. It is the **only** writer of the content tree, the per-item / per-folder constraints, and the global hearing constraint. The player reads these via CouchDB replication.
 
-### Technical Stack
+## Main user flows
 
-- **Frontend**: Flutter with Material Design
-- **Backend**: CouchDB via `dart_couch_widgets` package
-- **Audio Processing**: `media_kit`, `metatagger` for loudness scanning
-- **File Handling**: `desktop_drop`, `image_picker`, `cross_file`
-- **State Management**: `watch_it` for dependency injection
+### Content management
 
-### Key Workflows
+1. Log in.
+2. Browse the tree of folders and items.
+3. Import audio files (drag-and-drop or picker), with automatic loudness scanning during import.
+4. Edit metadata, cover images, visibility windows, audiobook flag, shuffle, repeat.
+5. Set per-item / per-folder hearing constraints (Hörregeln).
+6. Manage the global hearing constraint.
+7. Review listening statistics from the player (per device, by kid name).
 
-1. **Content Management Flow**
-   ```
-   Login → Media Organization → Content Configuration → Player Sync
-   ```
+### Audio preview
 
-2. **Media Organization**
-   ```
-   TreeView (folders only) → DetailView (folder/item specific)
-   ```
+The companion must be able to play audio locally for preview (independent of the player app's runtime).
 
-3. **Audio Import Process**
-   ```
-   DropZone → ImportDialog → LoudnessScanner → Content Storage
-   ```
+## Functional requirements
 
-### Requirements Analysis
+### 1. Content tree
 
-1. **Functional Requirements**
-   - Manage hierarchical media structure (folders and items)
-   - Import audio files with metadata extraction
-   - Loudness normalization for consistent playback volume
-   - Date-based content scheduling
-   - Audio book mode with position tracking
-   - Cover image management
+- Folders and items form a tree. Items contain tracks; folders contain folders or items.
+- The companion is the source of truth for the tree. Edits replicate to the player via CouchDB.
+- Tree edits (rename, move, delete, add) must take effect on the player on next replication without requiring player restart.
 
-2. **Technical Requirements**
-   - Cross-platform support (Windows, macOS, Linux, Web)
-   - Offline-first capability with database synchronization
-   - Real-time UI updates via change streams
-   - Audio playback preview functionality
-   - Drag-and-drop file import
+### 2. Audio import
 
-3. **User Experience Requirements**
-   - Tree-based navigation for media organization
-   - Contextual detail views for folders and items
-   - Visual feedback for new/unplayed content
-   - Keyboard navigation support
-   - Responsive design for different screen sizes
+- Drag-and-drop import of audio files into a folder or item.
+- Loudness is measured (LUFS) at import time and stored on the track so the player can normalize without re-scanning.
+- Cover images must be importable and attached to either items or individual tracks.
 
-### Architecture Patterns
+### 3. Visibility scheduling
 
-1. **MVVM-like Pattern**
-   - Views (`*_detail.dart` files)
-   - ViewModels (state management within widgets)
-   - Models (shared package data classes)
+- Each item / folder may carry `fromDateTime` and `toDateTime` to restrict when it is visible to the child. The companion edits these; the player honors them (unless `ignoreDateSettings` is set on the player side).
 
-2. **Event-Driven Updates**
-   - Database change streams trigger UI updates
-   - Reactive programming with Streams
+### 4. Hearing constraint editor (Hörregeln)
 
-3. **Modular Design**
-   - Separate components for different media types
-   - Reusable UI components (headers, dialogs)
-   - Separation of concerns between data and presentation
+The companion provides the **only** UI for authoring `HearingConstraint` trees. The DSL itself is documented in the root CLAUDE.md.
 
-### Key Technical Challenges
+- **Two-mode editor:**
+  1. **Template mode.** A card picker with pre-built templates (e.g. "max 30 min on weekdays", "weekend only") with German labels. New parents should reach a sensible policy without learning the DSL.
+  2. **Advanced mode.** Recursive tree editor with drag-and-drop, exposing every node type for arbitrary composition.
+- **Inherited-constraint indicator.** When an item has no own constraint but inherits one from an ancestor folder (per nearest-wins evaluation), the constraint tile must show a "geerbt von [folder]" chip. The editor must offer to deep-copy the inherited constraint as a starting point rather than forcing the parent to retype it.
+- A constraint set on an item / folder shadows any ancestor constraint (nearest-wins — see root CLAUDE.md). The editor must make this clear in the UI so parents don't double-restrict by accident.
 
-1. **Content Synchronization**
-   - Managing database change streams efficiently
-   - Handling concurrent modifications
-   - Ensuring content consistency between companion and player
+### 5. Global hearing constraint
 
-2. **Audio Processing**
-   - Loudness scanning performance
-   - Metadata extraction reliability
-   - Cross-platform audio playback preview
+- The companion is the **sole writer** of the `global-constraints` document (type `GlobalConstraints`); the player only reads and subscribes.
+- The global constraint uses the same `HearingConstraint` DSL.
+- The UI must communicate that the global constraint stacks **most-restrictively** with per-item / per-folder constraints — i.e. blocking on either side blocks playback.
 
-3. **Complex UI State**
-   - Tree view synchronization with content structure
-   - Drag-and-drop interaction handling
-   - Responsive layout management
+### 6. Listening statistics
 
-## Conclusion
+- The companion reads the player's `playlog-<deviceUuid>` and `playlog_archive-<deviceUuid>` documents (one set per device) to display statistics.
+- Statistics must be labeled by `kidName` from the `device-id-<uuid>` document so the parent can distinguish multiple kids.
 
-The application provides a comprehensive solution for managing children's media content with a focus on organization, scheduling, and audio quality control. The architecture leverages Flutter's cross-platform capabilities to create a responsive, offline-capable companion application. This companion app serves as the content management system for the player app, allowing parents or administrators to organize, schedule, and configure media content that will be consumed by children through the player application.
+### 7. Cross-platform support
 
-The companion app's primary focus is on content management rather than database features, providing an intuitive interface for setting up and maintaining the media library that the player app will access.
+- The companion must run on Windows, macOS, and Linux desktop. Web is supported where the dependencies allow but is not a primary target.
+
+## Key decisions
+
+- **Companion is the only writer of catalog & constraints.** The player only reads (and writes its own play log + device identity). This keeps the child-facing app simple and constrains the surface for accidental corruption.
+- **Offline-first via CouchDB.** Both apps work fully offline and reconcile via replication. Any new write should respect this and never assume a live network.
+- **Constraint editing has a templates-first surface.** Most parents will never open advanced mode; the template set is the supported authoring path. New templates should be additive — don't remove existing ones, even if redundant, because they may be referenced by parents' memory of the UI.
+
+## Code navigation
+
+Entry points for the major concerns above. Each file's responsibilities are documented in its own file-level docstring — keep details there, not here.
+
+- `lib/main.dart` — app bootstrap, DI.
+- `lib/login_screen.dart`, `lib/login_profile*.dart` — login and saved profiles.
+- `lib/my_home_page.dart`, `lib/split_view.dart` — top-level shell and tree/detail split.
+- `lib/media_folder_detail.dart`, `lib/media_item_detail.dart`, `lib/media_*_dialog.dart` — per-folder / per-item editing UI.
+- `lib/audio_import_util.dart`, `lib/loudness_scanner.dart`, `lib/loudness_batch_scanner.dart` — drag-and-drop import and LUFS scanning.
+- `lib/constraint_editor.dart` — visual constraint editor (template + advanced mode + inherited import).
+- `lib/constraint_templates.dart` — the pre-built constraint templates.
+- `lib/media_base_header.dart` — item / folder header, including the inherited-constraint indicator.
+- `lib/global_constraint_page.dart` — global constraint authoring UI.
+- `lib/audio_player_service.dart`, `lib/audio_playback_controls.dart` — local audio preview.
+- `lib/db_repair.dart` — admin / maintenance database utilities.

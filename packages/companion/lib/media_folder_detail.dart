@@ -78,6 +78,16 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
     );
   }
 
+  Color? _constraintBadgeColor(MediaBase doc) {
+    if (doc.hearingConstraint != null) return Colors.deepPurple;
+    final holder = ConstraintEvaluator.findNearestConstraintHolder(
+      item: doc,
+      allDocuments: _allDocuments,
+    );
+    if (holder != null) return Colors.grey;
+    return null;
+  }
+
   int _nextSortHint() {
     final children = _children;
     if (children.isEmpty) return 1;
@@ -1186,6 +1196,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                                 showTypeBadge: true,
                                 isNew: effectivelyNewById[doc.id] ?? false,
                                 showNewStar: false,
+                                constraintBadgeColor: _constraintBadgeColor(doc),
                               ),
                             ),
                             title: Row(

@@ -5,19 +5,50 @@ import 'package:dart_couch_widgets/dart_couch.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:logging/logging.dart';
+import 'package:player/admin/admin_override_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:player/audio_player_service.dart';
+import 'package:player/hearing_stats_service.dart';
 import 'package:player/play_position_service.dart';
 import 'package:player/widgets/media_app_bar.dart';
 import 'package:shared/models/datatypes.dart' as models;
-import 'package:shared/shared.dart' show MediaBaseIcon;
+import 'package:shared/shared.dart' show ConstraintEvaluator, ConstraintStatus, MediaBaseIcon;
 import 'package:watch_it/watch_it.dart';
 
 final _log = Logger('media_player_page');
 
+/// Player screen for a single [models.MediaItem].
+///
+/// Owns the lifecycle of one playback session against the singleton
+/// [AudioPlayerService]:
+///
+/// - **Constraint gate (hard).** Before loading audio, evaluates the item's
+///   nearest-wins constraint *and* the global constraint. A blocked result
+///   pops the page immediately, with no audio loaded and no stats recorded.
+/// - **Mid-playback enforcement.** Schedules a [Timer] for the smaller of
+///   the per-item and global remaining allowance. On expiry, allows the kid
+///   to finish if the remaining item time is within the admin-configured
+///   grace period; otherwise stops and pops the page.
+/// - **Position forwarding.** Forwards `positionStream` updates to
+///   [HearingStatsService.onPositionUpdate] so segment accumulation runs
+///   against actual playback (not wall-clock). Slider seeks and skip-next /
+///   skip-previous additionally call [HearingStatsService.recordSeek] to end
+///   the current segment.
+/// - **Audiobook resume.** If the item is an audiobook, resumes from the
+///   saved position on entry and saves position on pause / dispose, gated
+///   by the per-segment minimum-play threshold (see player CLAUDE.md).
+/// - **Side effects on real listening.** Clears the `isNew` flag only after
+///   the session has had at least one segment passing the threshold (see
+///   [_clearNewFlagIfThresholdMet]).
 class MediaPlayerPage extends StatefulWidget {
   final models.MediaItem item;
+  final Map<String, models.MediaBase> allDocuments;
 
-  const MediaPlayerPage({super.key, required this.item});
+  const MediaPlayerPage({
+    super.key,
+    required this.item,
+    required this.allDocuments,
+  });
 
   @override
   State<MediaPlayerPage> createState() => _MediaPlayerPageState();
@@ -25,21 +56,61 @@ class MediaPlayerPage extends StatefulWidget {
 
 class _MediaPlayerPageState extends State<MediaPlayerPage>
     with WidgetsBindingObserver {
+
   late AudioPlayerService _audioService;
+  late Map<String, models.MediaBase> _liveDocuments;
   bool _isLoading = true;
   bool _completedNaturally = false;
+  int _totalItemDurationMs = 0;
+  Timer? _allowanceTimer;
   StreamSubscription<ProcessingState>? _completionSub;
   StreamSubscription<bool>? _playingSub;
+  StreamSubscription<Duration>? _positionSub;
   StreamSubscription? _dbSubscription;
 
   @override
   void initState() {
     super.initState();
+    _liveDocuments = Map.of(widget.allDocuments);
     WidgetsBinding.instance.addObserver(this);
+    di<HearingStatsService>().addListener(_onStatsChanged);
     _initAudioAndPlay();
   }
 
+  /// Clears the [models.MediaItem.isNew] flag in CouchDB if the current
+  /// session had at least one contiguous play segment that met the
+  /// minimum-play threshold. Briefly scanning an item (e.g. open + close
+  /// without listening past the threshold) must NOT clear the flag.
+  ///
+  /// Uses the live document (via [_liveDocuments]) rather than [widget.item]
+  /// so the write carries the current `_rev` — replication may have updated
+  /// the item while the kid was listening, in which case the captured
+  /// `widget.item._rev` is stale and the put would fail with 409.
+  void _clearNewFlagIfThresholdMet() {
+    if (!di<HearingStatsService>().meetsMinimumPlayThreshold()) return;
+    final current = _liveDocuments[widget.item.id!] ?? widget.item;
+    if (current is! models.MediaItem || !current.isNew) return;
+    di<DartCouchDb>().put(current.copyWith(isNew: false));
+  }
+
+  /// Saves the current playhead as the audiobook resume position, gated on
+  /// the **current** play segment having met the minimum-play threshold.
+  ///
+  /// "Current segment" = play time since the last [recordPlayStart] or
+  /// [recordSeek] (pauses do not reset it). This guarantees the saved
+  /// position always corresponds to a spot the kid actually listened to past
+  /// the threshold — never a spot they briefly skimmed.
+  ///
+  /// Call BEFORE any seek/skip (so the pre-seek position is captured while
+  /// the about-to-end segment is still the current one). On exit/pause it's
+  /// called from the lifecycle hooks; if the kid hasn't accumulated enough
+  /// in the current segment, the existing saved position (or "done" marker)
+  /// is left untouched.
+  ///
+  /// Near-end detection still overrides the gate so that finishing within
+  /// 30 s of the last track always marks the item as done.
   void _saveCurrentPosition() {
+    if (!widget.item.isAudioBook) return;
     final currentIndex = _audioService.player.currentIndex;
     if (currentIndex == null) return;
     final position = _audioService.player.position;
@@ -51,24 +122,27 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
         position.inMilliseconds >= (lastTrackDurationMs - 30000);
 
     final svc = di<PlayPositionService>();
+    final itemId = widget.item.id!;
+
     if (isNearEnd) {
-      svc.saveDone(widget.item.id!);
-    } else {
-      svc.savePosition(
-        widget.item.id!,
-        track: currentIndex,
-        seconds: position.inSeconds,
-      );
+      svc.saveDone(itemId);
+      return;
     }
+
+    if (!di<HearingStatsService>().currentSegmentMeetsThreshold()) return;
+
+    svc.savePosition(itemId, track: currentIndex, seconds: position.inSeconds);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if ((state == AppLifecycleState.paused ||
-            state == AppLifecycleState.inactive) &&
-        widget.item.isAudioBook &&
-        !_completedNaturally) {
-      _saveCurrentPosition();
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      di<HearingStatsService>().persistActiveSession();
+      if (widget.item.isAudioBook && !_completedNaturally) {
+        _saveCurrentPosition();
+      }
+      _clearNewFlagIfThresholdMet();
     }
   }
 
@@ -90,7 +164,44 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
     _audioService = di<AudioPlayerService>();
     _audioService.stop();
 
+    // Subscribe to position stream immediately — same as the slider StreamBuilder.
+    // Must be before any await so there is no gap where events are missed.
+    _positionSub = _audioService.player.positionStream.listen((position) {
+      final trackIndex = _audioService.player.currentIndex ?? 0;
+      final isPlaying = _audioService.player.playing;
+      final isBuffering =
+          _audioService.player.processingState == ProcessingState.buffering;
+      di<HearingStatsService>().onPositionUpdate(
+        position,
+        trackIndex,
+        isPlaying,
+        isBuffering: isBuffering,
+      );
+    });
+
+    // P-01: Authoritative constraint gate — combined per-item + global.
+    // The grid overlay is only a UX hint; this is the real enforcement.
+    if (!di<AdminOverrideService>().ignoreConstraints) {
+      final statsService = di<HearingStatsService>();
+      final result = const ConstraintEvaluator().effectiveEvaluation(
+        item: widget.item,
+        allDocuments: widget.allDocuments,
+        allStats: Map.fromEntries(
+          widget.allDocuments.keys.map(
+            (id) => MapEntry(id, statsService.statsFor(id)),
+          ),
+        ),
+        globalConstraint: statsService.globalConstraint,
+        globalStats: statsService.globalStats(),
+      );
+      if (result.status == ConstraintStatus.blocked) {
+        if (mounted) Navigator.of(context).pop();
+        return;
+      }
+    }
+
     // Pop the page if this item (or any ancestor folder) becomes hidden.
+    // Also update _liveDocuments so constraint re-evaluation uses fresh data.
     _dbSubscription = di<DartCouchDb>()
         .useAllDocs(includeDocs: true)
         .listen((result) {
@@ -104,7 +215,10 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
       if (_isItemOrAncestorHidden(widget.item.id!, byId)) {
         _audioService.stop();
         Navigator.of(context).pop();
+        return;
       }
+      _liveDocuments = byId;
+      _reevaluateConstraintIfPlaying();
     });
 
     // Load all audio attachments from CouchDB into memory
@@ -149,11 +263,6 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
       _isLoading = false;
     });
 
-    // Clear the "new" flag on first playback
-    if (widget.item.isNew) {
-      di<DartCouchDb>().put(widget.item.copyWith(isNew: false));
-    }
-
     if (tracks.isNotEmpty) {
       int initialTrack = 0;
       Duration initialPosition = Duration.zero;
@@ -168,6 +277,15 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
         }
       }
 
+      // P-02: recordPlayStart only AFTER the constraint check has passed.
+      _totalItemDurationMs = widget.item.media
+          .fold<int>(0, (sum, t) => sum + t.durationMs);
+      di<HearingStatsService>().recordPlayStart(
+        widget.item.id!,
+        totalItemDurationMs: _totalItemDurationMs,
+        itemTitle: widget.item.name,
+      );
+
       await _audioService.loadAndPlay(
         tracks,
         shuffle: widget.item.isAudioBook ? false : widget.item.shuffle,
@@ -177,10 +295,21 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
       );
     }
 
+    // Schedule mid-playback constraint enforcement.
+    _scheduleAllowanceTimer();
+
     // Save position whenever playback is paused (covers app-kill-while-paused).
+    // On resume, reschedule the allowance timer with updated stats.
     _playingSub = _audioService.player.playingStream.listen((playing) {
-      if (!playing && widget.item.isAudioBook && !_completedNaturally) {
-        _saveCurrentPosition();
+      if (!playing) {
+        _allowanceTimer?.cancel();
+        di<HearingStatsService>().persistActiveSession();
+        if (widget.item.isAudioBook && !_completedNaturally) {
+          _saveCurrentPosition();
+        }
+      } else {
+        // Resumed — recalculate allowance from current stats.
+        _scheduleAllowanceTimer();
       }
     });
 
@@ -204,6 +333,8 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
           mounted) {
         _log.info('playlist complete — stopping and closing player');
         _completedNaturally = true;
+        di<HearingStatsService>().recordPlayCompletion(widget.item.id!);
+        _clearNewFlagIfThresholdMet();
         if (widget.item.isAudioBook) {
           di<PlayPositionService>().saveDone(widget.item.id!);
         }
@@ -211,6 +342,126 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
         Navigator.of(context).pop();
       }
     });
+  }
+
+  // ── Allowance timer ────────────────────────────────────────────────────────
+
+  /// Computes remaining allowance from constraints and schedules a timer
+  /// that stops playback when the allowance runs out.
+  /// Skipped when admin overrides are active or item is on repeat.
+  void _scheduleAllowanceTimer() {
+    _allowanceTimer?.cancel();
+    _allowanceTimer = null;
+
+    if (di<AdminOverrideService>().ignoreConstraints) return;
+
+    final statsService = di<HearingStatsService>();
+    final allowanceMs = const ConstraintEvaluator().effectiveRemainingAllowance(
+      item: widget.item,
+      allDocuments: _liveDocuments,
+      allStats: Map.fromEntries(
+        _liveDocuments.keys.map(
+          (id) => MapEntry(id, statsService.statsFor(id)),
+        ),
+      ),
+      globalConstraint: statsService.globalConstraint,
+      globalStats: statsService.globalStats(),
+    );
+
+    if (allowanceMs == null || allowanceMs <= 0) {
+      if (allowanceMs != null && allowanceMs <= 0) {
+        // Already exceeded — check grace period immediately.
+        _onAllowanceExpired();
+      }
+      return;
+    }
+
+    _log.info('Allowance timer: ${allowanceMs}ms remaining');
+    _allowanceTimer = Timer(Duration(milliseconds: allowanceMs), () {
+      _onAllowanceExpired();
+    });
+  }
+
+  /// Called when [HearingStatsService] notifies of a change (e.g. external
+  /// playlog sync from another device). Re-evaluates the constraint while
+  /// playing and stops playback (with grace period) if now blocked.
+  void _onStatsChanged() {
+    _reevaluateConstraintIfPlaying();
+  }
+
+  /// Re-evaluates time-based constraints against live documents and current
+  /// stats, then reschedules the allowance timer.
+  ///
+  /// Deliberately does NOT check [PlayCountConstraint] or similar gate-only
+  /// constraints: once a play has passed the gate check, count-based limits
+  /// must not interrupt it mid-play. Only [PlayDurationConstraint] and
+  /// [TimeOfDayConstraint] can end an ongoing session — and those are already
+  /// handled inside [_scheduleAllowanceTimer] via [remainingAllowanceWithAncestors].
+  ///
+  /// No-op when paused, not yet playing, or overrides are active.
+  void _reevaluateConstraintIfPlaying() {
+    if (!mounted || _completedNaturally || _isLoading) return;
+    if (!_audioService.player.playing) return;
+    if (di<AdminOverrideService>().ignoreConstraints) return;
+    _scheduleAllowanceTimer();
+  }
+
+  /// Milliseconds from the current playhead to the natural end of the
+  /// playlist. Returns 0 if no playback is active. Ignores repeat mode —
+  /// callers handle that separately.
+  int _remainingPlaylistMs() {
+    final currentIndex = _audioService.player.currentIndex;
+    if (currentIndex == null) return 0;
+    final positionMs = _audioService.player.position.inMilliseconds;
+    int remaining = 0;
+    for (int i = currentIndex; i < widget.item.media.length; i++) {
+      remaining += widget.item.media[i].durationMs;
+    }
+    remaining -= positionMs;
+    return remaining < 0 ? 0 : remaining;
+  }
+
+  void _onAllowanceExpired() {
+    if (!mounted || _completedNaturally) return;
+
+    // Grace period: if remaining playback to the end of the playlist is
+    // within the configured threshold, allow the child to finish rather
+    // than cutting off near the end.
+    //
+    // Remaining is measured from the playhead (currentIndex + position +
+    // remaining track durations), not from session-accumulated time —
+    // otherwise resumed audiobooks and items the kid seeked through
+    // would compute the wrong "remaining".
+    //
+    // Repeat carve-out: with repeat enabled the playlist never ends, so
+    // grace would let playback loop indefinitely past the limit. Treat
+    // remaining as effectively infinite (stop immediately).
+    final graceMinutes =
+        di<SharedPreferencesWithCache>().getInt(AdminOverrideService.kGracePeriodMinutes) ??
+        AdminOverrideService.defaultGracePeriodMinutes;
+    final graceThresholdMs = graceMinutes * 60 * 1000;
+    final remainingItemMs = widget.item.repeat ? -1 : _remainingPlaylistMs();
+
+    if (remainingItemMs > 0 && remainingItemMs <= graceThresholdMs) {
+      _log.info('Allowance expired but within ${graceMinutes}min grace '
+          '(${remainingItemMs}ms remaining of ${_totalItemDurationMs}ms) '
+          '— allowing completion');
+      return;
+    }
+
+    _log.info('Allowance expired — stopping playback');
+    _completedNaturally = false;
+    di<HearingStatsService>().recordPlayStop(widget.item.id!);
+    if (widget.item.isAudioBook) {
+      _saveCurrentPosition();
+    }
+    _audioService.stop();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hörzeit aufgebraucht')),
+      );
+      Navigator.of(context).pop();
+    }
   }
 
   String _formatDuration(Duration d) {
@@ -226,15 +477,25 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    di<HearingStatsService>().removeListener(_onStatsChanged);
+    _allowanceTimer?.cancel();
     _completionSub?.cancel();
     _playingSub?.cancel();
+    _positionSub?.cancel();
     _dbSubscription?.cancel();
+
+    di<HearingStatsService>().recordPlayStop(widget.item.id!);
 
     if (widget.item.isAudioBook &&
         !_completedNaturally &&
         _audioService.player.currentIndex != null) {
       _saveCurrentPosition();
     }
+
+    // Clear new flag only if the session actually had real listening.
+    // Must run AFTER recordPlayStop so the final segment has been finalised
+    // (or discarded) into the session's threshold state.
+    _clearNewFlagIfThresholdMet();
 
     _audioService.stop();
     super.dispose();
@@ -245,7 +506,11 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
     final hasMultipleTracks = widget.item.media.length > 1;
 
     return Scaffold(
-      appBar: MediaAppBar(onBack: () => Navigator.of(context).pop()),
+      appBar: MediaAppBar(
+        onBack: () => Navigator.of(context).pop(),
+        currentItem: widget.item,
+        allDocuments: _liveDocuments,
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
@@ -353,7 +618,17 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
                               icon: const Icon(Icons.skip_previous),
                               iconSize: 36,
                               onPressed: hasPrevious
-                                  ? _audioService.skipToPrevious
+                                  ? () {
+                                      // Capture the pre-seek position while
+                                      // the about-to-end segment is still
+                                      // current — otherwise its progress is
+                                      // lost.
+                                      _saveCurrentPosition();
+                                      di<HearingStatsService>()
+                                          .recordSeek(widget.item.id!);
+                                      _audioService.skipToPrevious();
+                                      _scheduleAllowanceTimer();
+                                    }
                                   : null,
                             ),
                           Expanded(
@@ -379,9 +654,18 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
                                       min: 0.0,
                                       max: maxSeconds,
                                       onChanged: (value) {
+                                        // Capture pre-seek position so a
+                                        // valid segment isn't lost. After
+                                        // recordSeek the current segment
+                                        // resets to 0, so subsequent drag
+                                        // ticks won't pass the threshold.
+                                        _saveCurrentPosition();
+                                        di<HearingStatsService>()
+                                            .recordSeek(widget.item.id!);
                                         _audioService.seek(
                                           Duration(milliseconds: value.toInt()),
                                         );
+                                        _scheduleAllowanceTimer();
                                       },
                                     ),
                                     Text(
@@ -400,7 +684,13 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
                               icon: const Icon(Icons.skip_next),
                               iconSize: 36,
                               onPressed: hasNext
-                                  ? _audioService.skipToNext
+                                  ? () {
+                                      _saveCurrentPosition();
+                                      di<HearingStatsService>()
+                                          .recordSeek(widget.item.id!);
+                                      _audioService.skipToNext();
+                                      _scheduleAllowanceTimer();
+                                    }
                                   : null,
                             ),
                         ],

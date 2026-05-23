@@ -18,6 +18,7 @@ class MediaBaseMapper extends SubClassMapperBase<MediaBase> {
       CouchDocumentBaseMapper.ensureInitialized().addSubMapper(_instance!);
       MediaFolderMapper.ensureInitialized();
       MediaItemMapper.ensureInitialized();
+      HearingConstraintMapper.ensureInitialized();
       AttachmentInfoMapper.ensureInitialized();
       RevisionsMapper.ensureInitialized();
       RevsInfoMapper.ensureInitialized();
@@ -61,6 +62,14 @@ class MediaBaseMapper extends SubClassMapperBase<MediaBase> {
     _$hidden,
     opt: true,
     def: false,
+  );
+  static HearingConstraint? _$hearingConstraint(MediaBase v) =>
+      v.hearingConstraint;
+  static const Field<MediaBase, HearingConstraint> _f$hearingConstraint = Field(
+    'hearingConstraint',
+    _$hearingConstraint,
+    key: r'hearing_constraint',
+    opt: true,
   );
   static String? _$id(MediaBase v) => v.id;
   static const Field<MediaBase, String> _f$id = Field(
@@ -118,6 +127,7 @@ class MediaBaseMapper extends SubClassMapperBase<MediaBase> {
     #fromDateTime: _f$fromDateTime,
     #toDateTime: _f$toDateTime,
     #hidden: _f$hidden,
+    #hearingConstraint: _f$hearingConstraint,
     #id: _f$id,
     #attachments: _f$attachments,
     #deleted: _f$deleted,
@@ -171,6 +181,8 @@ mixin MediaBaseMappable {
 
 abstract class MediaBaseCopyWith<$R, $In extends MediaBase, $Out>
     implements CouchDocumentBaseCopyWith<$R, $In, $Out> {
+  HearingConstraintCopyWith<$R, HearingConstraint, HearingConstraint>?
+  get hearingConstraint;
   @override
   MapCopyWith<
     $R,
@@ -195,6 +207,7 @@ abstract class MediaBaseCopyWith<$R, $In extends MediaBase, $Out>
     String? fromDateTime,
     String? toDateTime,
     bool? hidden,
+    HearingConstraint? hearingConstraint,
     String? id,
     Map<String, AttachmentInfo>? attachments,
     bool? deleted,
@@ -214,6 +227,7 @@ class MediaFolderMapper extends SubClassMapperBase<MediaFolder> {
     if (_instance == null) {
       MapperContainer.globals.use(_instance = MediaFolderMapper._());
       MediaBaseMapper.ensureInitialized().addSubMapper(_instance!);
+      HearingConstraintMapper.ensureInitialized();
       AttachmentInfoMapper.ensureInitialized();
       RevisionsMapper.ensureInitialized();
       RevsInfoMapper.ensureInitialized();
@@ -263,6 +277,15 @@ class MediaFolderMapper extends SubClassMapperBase<MediaFolder> {
     opt: true,
     def: false,
   );
+  static HearingConstraint? _$hearingConstraint(MediaFolder v) =>
+      v.hearingConstraint;
+  static const Field<MediaFolder, HearingConstraint> _f$hearingConstraint =
+      Field(
+        'hearingConstraint',
+        _$hearingConstraint,
+        key: r'hearing_constraint',
+        opt: true,
+      );
   static String? _$id(MediaFolder v) => v.id;
   static const Field<MediaFolder, String> _f$id = Field(
     'id',
@@ -316,6 +339,7 @@ class MediaFolderMapper extends SubClassMapperBase<MediaFolder> {
     #fromDateTime: _f$fromDateTime,
     #toDateTime: _f$toDateTime,
     #hidden: _f$hidden,
+    #hearingConstraint: _f$hearingConstraint,
     #id: _f$id,
     #attachments: _f$attachments,
     #deleted: _f$deleted,
@@ -349,6 +373,7 @@ class MediaFolderMapper extends SubClassMapperBase<MediaFolder> {
       fromDateTime: data.dec(_f$fromDateTime),
       toDateTime: data.dec(_f$toDateTime),
       hidden: data.dec(_f$hidden),
+      hearingConstraint: data.dec(_f$hearingConstraint),
       id: data.dec(_f$id),
       attachments: data.dec(_f$attachments),
       deleted: data.dec(_f$deleted),
@@ -420,6 +445,9 @@ extension MediaFolderValueCopy<$R, $Out>
 abstract class MediaFolderCopyWith<$R, $In extends MediaFolder, $Out>
     implements MediaBaseCopyWith<$R, $In, $Out> {
   @override
+  HearingConstraintCopyWith<$R, HearingConstraint, HearingConstraint>?
+  get hearingConstraint;
+  @override
   MapCopyWith<
     $R,
     String,
@@ -444,6 +472,7 @@ abstract class MediaFolderCopyWith<$R, $In extends MediaFolder, $Out>
     String? fromDateTime,
     String? toDateTime,
     bool? hidden,
+    HearingConstraint? hearingConstraint,
     String? id,
     Map<String, AttachmentInfo>? attachments,
     bool? deleted,
@@ -463,6 +492,11 @@ class _MediaFolderCopyWithImpl<$R, $Out>
   @override
   late final ClassMapperBase<MediaFolder> $mapper =
       MediaFolderMapper.ensureInitialized();
+  @override
+  HearingConstraintCopyWith<$R, HearingConstraint, HearingConstraint>?
+  get hearingConstraint => $value.hearingConstraint?.copyWith.$chain(
+    (v) => call(hearingConstraint: v),
+  );
   @override
   MapCopyWith<
     $R,
@@ -505,6 +539,7 @@ class _MediaFolderCopyWithImpl<$R, $Out>
     Object? fromDateTime = $none,
     Object? toDateTime = $none,
     bool? hidden,
+    Object? hearingConstraint = $none,
     Object? id = $none,
     Object? attachments = $none,
     bool? deleted,
@@ -521,6 +556,7 @@ class _MediaFolderCopyWithImpl<$R, $Out>
       if (fromDateTime != $none) #fromDateTime: fromDateTime,
       if (toDateTime != $none) #toDateTime: toDateTime,
       if (hidden != null) #hidden: hidden,
+      if (hearingConstraint != $none) #hearingConstraint: hearingConstraint,
       if (id != $none) #id: id,
       if (attachments != $none) #attachments: attachments,
       if (deleted != null) #deleted: deleted,
@@ -542,6 +578,10 @@ class _MediaFolderCopyWithImpl<$R, $Out>
     fromDateTime: data.get(#fromDateTime, or: $value.fromDateTime),
     toDateTime: data.get(#toDateTime, or: $value.toDateTime),
     hidden: data.get(#hidden, or: $value.hidden),
+    hearingConstraint: data.get(
+      #hearingConstraint,
+      or: $value.hearingConstraint,
+    ),
     id: data.get(#id, or: $value.id),
     attachments: data.get(#attachments, or: $value.attachments),
     deleted: data.get(#deleted, or: $value.deleted),
@@ -566,6 +606,7 @@ class MediaItemMapper extends SubClassMapperBase<MediaItem> {
       MapperContainer.globals.use(_instance = MediaItemMapper._());
       MediaBaseMapper.ensureInitialized().addSubMapper(_instance!);
       MediaAttachmentMapper.ensureInitialized();
+      HearingConstraintMapper.ensureInitialized();
       AttachmentInfoMapper.ensureInitialized();
       RevisionsMapper.ensureInitialized();
       RevsInfoMapper.ensureInitialized();
@@ -639,6 +680,14 @@ class MediaItemMapper extends SubClassMapperBase<MediaItem> {
     opt: true,
     def: false,
   );
+  static HearingConstraint? _$hearingConstraint(MediaItem v) =>
+      v.hearingConstraint;
+  static const Field<MediaItem, HearingConstraint> _f$hearingConstraint = Field(
+    'hearingConstraint',
+    _$hearingConstraint,
+    key: r'hearing_constraint',
+    opt: true,
+  );
   static String? _$id(MediaItem v) => v.id;
   static const Field<MediaItem, String> _f$id = Field(
     'id',
@@ -701,6 +750,7 @@ class MediaItemMapper extends SubClassMapperBase<MediaItem> {
     #fromDateTime: _f$fromDateTime,
     #toDateTime: _f$toDateTime,
     #hidden: _f$hidden,
+    #hearingConstraint: _f$hearingConstraint,
     #id: _f$id,
     #attachments: _f$attachments,
     #deleted: _f$deleted,
@@ -741,6 +791,7 @@ class MediaItemMapper extends SubClassMapperBase<MediaItem> {
       fromDateTime: data.dec(_f$fromDateTime),
       toDateTime: data.dec(_f$toDateTime),
       hidden: data.dec(_f$hidden),
+      hearingConstraint: data.dec(_f$hearingConstraint),
       id: data.dec(_f$id),
       attachments: data.dec(_f$attachments),
       deleted: data.dec(_f$deleted),
@@ -817,6 +868,9 @@ abstract class MediaItemCopyWith<$R, $In extends MediaItem, $Out>
   >
   get media;
   @override
+  HearingConstraintCopyWith<$R, HearingConstraint, HearingConstraint>?
+  get hearingConstraint;
+  @override
   MapCopyWith<
     $R,
     String,
@@ -846,6 +900,7 @@ abstract class MediaItemCopyWith<$R, $In extends MediaItem, $Out>
     String? fromDateTime,
     String? toDateTime,
     bool? hidden,
+    HearingConstraint? hearingConstraint,
     String? id,
     Map<String, AttachmentInfo>? attachments,
     bool? deleted,
@@ -875,6 +930,11 @@ class _MediaItemCopyWithImpl<$R, $Out>
     $value.media,
     (v, t) => v.copyWith.$chain(t),
     (v) => call(media: v),
+  );
+  @override
+  HearingConstraintCopyWith<$R, HearingConstraint, HearingConstraint>?
+  get hearingConstraint => $value.hearingConstraint?.copyWith.$chain(
+    (v) => call(hearingConstraint: v),
   );
   @override
   MapCopyWith<
@@ -923,6 +983,7 @@ class _MediaItemCopyWithImpl<$R, $Out>
     Object? fromDateTime = $none,
     Object? toDateTime = $none,
     bool? hidden,
+    Object? hearingConstraint = $none,
     Object? id = $none,
     Object? attachments = $none,
     bool? deleted,
@@ -945,6 +1006,7 @@ class _MediaItemCopyWithImpl<$R, $Out>
       if (fromDateTime != $none) #fromDateTime: fromDateTime,
       if (toDateTime != $none) #toDateTime: toDateTime,
       if (hidden != null) #hidden: hidden,
+      if (hearingConstraint != $none) #hearingConstraint: hearingConstraint,
       if (id != $none) #id: id,
       if (attachments != $none) #attachments: attachments,
       if (deleted != null) #deleted: deleted,
@@ -971,6 +1033,10 @@ class _MediaItemCopyWithImpl<$R, $Out>
     fromDateTime: data.get(#fromDateTime, or: $value.fromDateTime),
     toDateTime: data.get(#toDateTime, or: $value.toDateTime),
     hidden: data.get(#hidden, or: $value.hidden),
+    hearingConstraint: data.get(
+      #hearingConstraint,
+      or: $value.hearingConstraint,
+    ),
     id: data.get(#id, or: $value.id),
     attachments: data.get(#attachments, or: $value.attachments),
     deleted: data.get(#deleted, or: $value.deleted),

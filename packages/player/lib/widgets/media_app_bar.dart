@@ -2,6 +2,7 @@ import 'package:dart_couch_widgets/dart_couch.dart';
 import 'package:dart_couch_widgets/dart_couch_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:player/main.dart';
+import 'package:player/widgets/constraint_allowance_indicator.dart';
 import 'package:shared/models/datatypes.dart';
 import 'package:shared/shared.dart' show MediaBaseIcon;
 import 'package:watch_it/watch_it.dart';
@@ -11,11 +12,16 @@ class MediaAppBar extends StatelessWidget implements PreferredSizeWidget {
   final List<MediaBase>? ancestors;
   final Map<String, MediaBase>? allDocuments;
 
+  /// When set, the constraint indicator shows the most-restrictive of the
+  /// item's nearest-wins constraint and the global constraint. When null,
+  /// only the global constraint is shown.
+  final MediaBase? currentItem;
   const MediaAppBar({
     super.key,
     this.onBack,
     this.ancestors,
     this.allDocuments,
+    this.currentItem,
   });
 
   @override
@@ -34,6 +40,10 @@ class MediaAppBar extends StatelessWidget implements PreferredSizeWidget {
             )
           : const Text('Media Player for kids'),
       actions: [
+        ConstraintAllowanceIndicator(
+          item: currentItem,
+          allDocuments: allDocuments,
+        ),
         OfflineFirstServerStateWidget(
           server: di<DartCouchServer>() as OfflineFirstServer,
           db: di<DartCouchDb>() as OfflineFirstDb,
