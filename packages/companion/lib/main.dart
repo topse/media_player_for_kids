@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dart_couch_widgets/dart_couch.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:logging/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:watch_it/watch_it.dart';
@@ -19,6 +20,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   DartCouchDb.ensureInitialized();
+  await initializeDateFormatting();
 
   initializeMappers();
 
@@ -137,6 +139,8 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       title: 'Media Player for kids Companion',
       debugShowCheckedModeBanner: false,
+      localizationsDelegates: SharedL10n.localizationsDelegates,
+      supportedLocales: SharedL10n.supportedLocales,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),

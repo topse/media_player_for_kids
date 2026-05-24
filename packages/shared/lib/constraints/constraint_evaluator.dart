@@ -1,5 +1,7 @@
+import 'package:intl/intl.dart';
 import 'package:logging/logging.dart';
 
+import '../l10n/shared_l10n.dart';
 import '../models/datatypes.dart';
 import 'hearing_constraint.dart';
 import 'hearing_stats.dart';
@@ -13,8 +15,9 @@ enum ConstraintStatus { allowed, warning, blocked }
 class EvaluationResult {
   final ConstraintStatus status;
 
-  /// Short German-language reason shown to the child or in the AppBar tooltip.
-  /// Null when status == allowed.
+  /// Short localized reason shown to the child or in the AppBar tooltip.
+  /// Null when status == allowed, or when the caller did not provide a
+  /// [SharedL10n] to the evaluator.
   final String? humanReadableReason;
 
   /// How long until the blocking constraint resets (for the countdown icon).
@@ -52,6 +55,7 @@ class ConstraintEvaluator {
     Map<String, HearingStats> allStats = const {},
     List<String> folderChildIds = const [],
     DateTime? now,
+    SharedL10n? loc,
   }) {
     return _eval(
       constraint,
@@ -59,6 +63,7 @@ class ConstraintEvaluator {
       allStats,
       folderChildIds,
       now ?? DateTime.now(),
+      loc,
     );
   }
 
@@ -78,6 +83,7 @@ class ConstraintEvaluator {
     required Map<String, MediaBase> allDocuments,
     required Map<String, HearingStats?> allStats,
     DateTime? now,
+    SharedL10n? loc,
   }) {
     final t = now ?? DateTime.now();
     _log.fine('evaluateWithAncestors: item="${item.name}" (${item.id})');
@@ -104,6 +110,7 @@ class ConstraintEvaluator {
           childStats,
           children,
           t,
+          loc,
         );
 
         _log.fine('  nearest constraint on "${current.name}" (${current.id}): '
@@ -181,33 +188,34 @@ class ConstraintEvaluator {
     Map<String, HearingStats> allStats,
     List<String> folderChildIds,
     DateTime now,
+    SharedL10n? loc,
   ) {
     if (constraint is LogicalAndConstraint) {
-      return _evalAnd(constraint, stats, allStats, folderChildIds, now);
+      return _evalAnd(constraint, stats, allStats, folderChildIds, now, loc);
     }
     if (constraint is LogicalOrConstraint) {
-      return _evalOr(constraint, stats, allStats, folderChildIds, now);
+      return _evalOr(constraint, stats, allStats, folderChildIds, now, loc);
     }
     if (constraint is LogicalNotConstraint) {
-      return _evalNot(constraint, stats, allStats, folderChildIds, now);
+      return _evalNot(constraint, stats, allStats, folderChildIds, now, loc);
     }
     if (constraint is PlayCountConstraint) {
-      return _evalPlayCount(constraint, stats, now);
+      return _evalPlayCount(constraint, stats, now, loc);
     }
     if (constraint is PlayDurationConstraint) {
-      return _evalPlayDuration(constraint, stats, now);
+      return _evalPlayDuration(constraint, stats, now, loc);
     }
     if (constraint is FolderItemCountConstraint) {
-      return _evalFolderItemCount(constraint, allStats, folderChildIds, now);
+      return _evalFolderItemCount(constraint, allStats, folderChildIds, now, loc);
     }
     if (constraint is TimeOfDayConstraint) {
-      return _evalTimeOfDay(constraint, now);
+      return _evalTimeOfDay(constraint, now, loc);
     }
     if (constraint is DayOfWeekConstraint) {
-      return _evalDayOfWeek(constraint, now);
+      return _evalDayOfWeek(constraint, now, loc);
     }
     if (constraint is DateRangeConstraint) {
-      return _evalDateRange(constraint, now);
+      return _evalDateRange(constraint, now, loc);
     }
     // NFR-04: Unknown constraint type → fail-open (permissive unknown).
     return EvaluationResult.allowed;
@@ -221,10 +229,11 @@ class ConstraintEvaluator {
     Map<String, HearingStats> allStats,
     List<String> folderChildIds,
     DateTime now,
+    SharedL10n? loc,
   ) {
     EvaluationResult worst = EvaluationResult.allowed;
     for (final node in c.nodes) {
-      final r = _eval(node, stats, allStats, folderChildIds, now);
+      final r = _eval(node, stats, allStats, folderChildIds, now, loc);
       if (r.status.index > worst.status.index) {
         worst = r;
         if (worst.status == ConstraintStatus.blocked) return worst;
@@ -239,14 +248,15 @@ class ConstraintEvaluator {
     Map<String, HearingStats> allStats,
     List<String> folderChildIds,
     DateTime now,
+    SharedL10n? loc,
   ) {
     if (c.nodes.isEmpty) return EvaluationResult.allowed;
-    EvaluationResult best = const EvaluationResult(
+    EvaluationResult best = EvaluationResult(
       status: ConstraintStatus.blocked,
-      humanReadableReason: 'Kein Zugang',
+      humanReadableReason: loc?.reasonNoAccess,
     );
     for (final node in c.nodes) {
-      final r = _eval(node, stats, allStats, folderChildIds, now);
+      final r = _eval(node, stats, allStats, folderChildIds, now, loc);
       if (r.status.index < best.status.index) {
         best = r;
         if (best.status == ConstraintStatus.allowed) return best;
@@ -261,13 +271,14 @@ class ConstraintEvaluator {
     Map<String, HearingStats> allStats,
     List<String> folderChildIds,
     DateTime now,
+    SharedL10n? loc,
   ) {
-    final inner = _eval(c.node, stats, allStats, folderChildIds, now);
+    final inner = _eval(c.node, stats, allStats, folderChildIds, now, loc);
     switch (inner.status) {
       case ConstraintStatus.allowed:
-        return const EvaluationResult(
+        return EvaluationResult(
           status: ConstraintStatus.blocked,
-          humanReadableReason: 'Gesperrt',
+          humanReadableReason: loc?.reasonLocked,
         );
       case ConstraintStatus.blocked:
         return EvaluationResult.allowed;
@@ -283,6 +294,7 @@ class ConstraintEvaluator {
     PlayCountConstraint c,
     HearingStats? stats,
     DateTime now,
+    SharedL10n? loc,
   ) {
     // EC-08: null stats → no history yet → allowed.
     if (stats == null) return EvaluationResult.allowed;
@@ -297,7 +309,7 @@ class ConstraintEvaluator {
       return EvaluationResult(
         status: ConstraintStatus.blocked,
         humanReadableReason:
-            'Maximal ${c.maxCount}× ${_windowLabel(c.window)} erreicht',
+            loc?.reasonMaxPlaysReached(c.maxCount, _windowLabel(c.window, loc)),
         resetsIn: _resetsIn(c.window, events, now),
       );
     }
@@ -305,7 +317,7 @@ class ConstraintEvaluator {
     if (c.maxCount > 0 && count >= c.maxCount - 1) {
       return EvaluationResult(
         status: ConstraintStatus.warning,
-        humanReadableReason: 'Noch 1× verfügbar',
+        humanReadableReason: loc?.reasonOnePlayLeft,
         resetsIn: _resetsIn(c.window, events, now),
       );
     }
@@ -318,6 +330,7 @@ class ConstraintEvaluator {
     PlayDurationConstraint c,
     HearingStats? stats,
     DateTime now,
+    SharedL10n? loc,
   ) {
     if (stats == null) return EvaluationResult.allowed;
 
@@ -328,8 +341,10 @@ class ConstraintEvaluator {
     if (usedMinutes >= c.maxMinutes) {
       return EvaluationResult(
         status: ConstraintStatus.blocked,
-        humanReadableReason:
-            'Zeitlimit erreicht (max. ${c.maxMinutes} Min. ${_windowLabel(c.window)})',
+        humanReadableReason: loc?.reasonTimeLimitReached(
+          c.maxMinutes,
+          _windowLabel(c.window, loc),
+        ),
         resetsIn: _resetsIn(c.window, events, now),
       );
     }
@@ -337,7 +352,7 @@ class ConstraintEvaluator {
     if (usedMinutes >= c.maxMinutes * 0.9) {
       return EvaluationResult(
         status: ConstraintStatus.warning,
-        humanReadableReason: 'Fast am Zeitlimit',
+        humanReadableReason: loc?.reasonAlmostAtTimeLimit,
         resetsIn: _resetsIn(c.window, events, now),
       );
     }
@@ -351,6 +366,7 @@ class ConstraintEvaluator {
     Map<String, HearingStats> allStats,
     List<String> folderChildIds,
     DateTime now,
+    SharedL10n? loc,
   ) {
     int startedCount = 0;
     for (final childId in folderChildIds) {
@@ -365,13 +381,13 @@ class ConstraintEvaluator {
       return EvaluationResult(
         status: ConstraintStatus.blocked,
         humanReadableReason:
-            'Max. ${c.maxItems} Einträge ${_windowLabel(c.window)} gestartet',
+            loc?.reasonMaxItemsStarted(c.maxItems, _windowLabel(c.window, loc)),
       );
     }
     if (c.maxItems > 0 && startedCount >= c.maxItems - 1) {
       return EvaluationResult(
         status: ConstraintStatus.warning,
-        humanReadableReason: 'Noch 1 Eintrag verfügbar',
+        humanReadableReason: loc?.reasonOneItemLeft,
       );
     }
     return EvaluationResult.allowed;
@@ -379,7 +395,11 @@ class ConstraintEvaluator {
 
   // ── TimeOfDayConstraint ──────────────────────────────────────────────────────
 
-  EvaluationResult _evalTimeOfDay(TimeOfDayConstraint c, DateTime now) {
+  EvaluationResult _evalTimeOfDay(
+    TimeOfDayConstraint c,
+    DateTime now,
+    SharedL10n? loc,
+  ) {
     final from = _parseHHmm(c.fromTime);
     final to = _parseHHmm(c.toTime);
     final current = now.hour * 60 + now.minute;
@@ -391,7 +411,7 @@ class ConstraintEvaluator {
     if (!inRange) {
       return EvaluationResult(
         status: ConstraintStatus.blocked,
-        humanReadableReason: 'Nur ${c.fromTime}–${c.toTime} Uhr verfügbar',
+        humanReadableReason: loc?.reasonOnlyAvailableHours(c.fromTime, c.toTime),
         resetsIn: _resetsInTimeOfDay(from, current),
       );
     }
@@ -400,19 +420,27 @@ class ConstraintEvaluator {
 
   // ── DayOfWeekConstraint ──────────────────────────────────────────────────────
 
-  EvaluationResult _evalDayOfWeek(DayOfWeekConstraint c, DateTime now) {
+  EvaluationResult _evalDayOfWeek(
+    DayOfWeekConstraint c,
+    DateTime now,
+    SharedL10n? loc,
+  ) {
     if (c.allowedDays.contains(now.weekday)) {
       return EvaluationResult.allowed;
     }
-    return const EvaluationResult(
+    return EvaluationResult(
       status: ConstraintStatus.blocked,
-      humanReadableReason: 'Heute nicht verfügbar',
+      humanReadableReason: loc?.reasonNotAvailableToday,
     );
   }
 
   // ── DateRangeConstraint ──────────────────────────────────────────────────────
 
-  EvaluationResult _evalDateRange(DateRangeConstraint c, DateTime now) {
+  EvaluationResult _evalDateRange(
+    DateRangeConstraint c,
+    DateTime now,
+    SharedL10n? loc,
+  ) {
     final today = DateTime(now.year, now.month, now.day);
 
     if (c.fromDate != null) {
@@ -420,7 +448,7 @@ class ConstraintEvaluator {
       if (today.isBefore(from)) {
         return EvaluationResult(
           status: ConstraintStatus.blocked,
-          humanReadableReason: 'Verfügbar ab ${_formatDate(from)}',
+          humanReadableReason: loc?.reasonAvailableFrom(_formatDate(from, loc)),
           resetsIn: from.difference(today),
         );
       }
@@ -429,9 +457,9 @@ class ConstraintEvaluator {
     if (c.toDate != null) {
       final to = DateTime.parse(c.toDate!);
       if (today.isAfter(to)) {
-        return const EvaluationResult(
+        return EvaluationResult(
           status: ConstraintStatus.blocked,
-          humanReadableReason: 'Nicht mehr verfügbar',
+          humanReadableReason: loc?.reasonNoLongerAvailable,
         );
       }
     }
@@ -613,6 +641,7 @@ class ConstraintEvaluator {
     HearingConstraint? globalConstraint,
     HearingStats? globalStats,
     DateTime? now,
+    SharedL10n? loc,
   }) {
     final t = now ?? DateTime.now();
     final perItem = evaluateWithAncestors(
@@ -620,6 +649,7 @@ class ConstraintEvaluator {
       allDocuments: allDocuments,
       allStats: allStats,
       now: t,
+      loc: loc,
     );
     if (globalConstraint == null) return perItem;
     final global = evaluate(
@@ -627,6 +657,7 @@ class ConstraintEvaluator {
       itemId: '_global',
       stats: globalStats,
       now: t,
+      loc: loc,
     );
     return global.status.index > perItem.status.index ? global : perItem;
   }
@@ -769,7 +800,7 @@ class ConstraintEvaluator {
     // unlimited time even when it is gated off.
     int? min;
     for (final node in c.nodes) {
-      final evalResult = _eval(node, stats, allStats, folderChildIds, now);
+      final evalResult = _eval(node, stats, allStats, folderChildIds, now, null);
       if (evalResult.status == ConstraintStatus.blocked) return 0;
       final a = _allowance(node, stats, allStats, folderChildIds, now);
       if (a != null) {
@@ -792,7 +823,7 @@ class ConstraintEvaluator {
     int? max;
     bool anyPassing = false;
     for (final node in c.nodes) {
-      final evalResult = _eval(node, stats, allStats, folderChildIds, now);
+      final evalResult = _eval(node, stats, allStats, folderChildIds, now, null);
       if (evalResult.status == ConstraintStatus.blocked) continue;
       anyPassing = true;
       final a = _allowance(node, stats, allStats, folderChildIds, now);
@@ -942,7 +973,7 @@ class ConstraintEvaluator {
     // Mirror _allowanceAnd: if any child is blocked, the AND is blocked → 0.
     double? min;
     for (final node in c.nodes) {
-      final evalResult = _eval(node, stats, allStats, folderChildIds, now);
+      final evalResult = _eval(node, stats, allStats, folderChildIds, now, null);
       if (evalResult.status == ConstraintStatus.blocked) return 0.0;
       final r =
           _allowanceRatio(node, stats, allStats, folderChildIds, now, itemDurationMs);
@@ -965,7 +996,7 @@ class ConstraintEvaluator {
     double? max;
     bool anyPassing = false;
     for (final node in c.nodes) {
-      final evalResult = _eval(node, stats, allStats, folderChildIds, now);
+      final evalResult = _eval(node, stats, allStats, folderChildIds, now, null);
       if (evalResult.status == ConstraintStatus.blocked) continue;
       anyPassing = true;
       final r =
@@ -1193,24 +1224,24 @@ class ConstraintEvaluator {
     return int.parse(parts[0]) * 60 + int.parse(parts[1]);
   }
 
-  String _windowLabel(TimeWindow w) {
+  String _windowLabel(TimeWindow w, SharedL10n? loc) {
+    if (loc == null) return '';
     switch (w.type) {
       case TimeWindowType.perDay:
-        return 'pro Tag';
+        return loc.windowPerDay;
       case TimeWindowType.perWeek:
-        return 'pro Woche';
+        return loc.windowPerWeek;
       case TimeWindowType.perMonth:
-        return 'pro Monat';
+        return loc.windowPerMonth;
       case TimeWindowType.sinceDate:
-        return 'seit ${_formatDate(DateTime.parse(w.sinceDate!))}';
+        return loc.windowSinceDate(
+            _formatDate(DateTime.parse(w.sinceDate!), loc));
       case TimeWindowType.rollingHours:
-        return 'je ${w.rollingHours} Stunden';
+        return loc.windowRollingHours(w.rollingHours!);
     }
   }
 
-  String _formatDate(DateTime dt) {
-    final d = dt.day.toString().padLeft(2, '0');
-    final m = dt.month.toString().padLeft(2, '0');
-    return '$d.$m.${dt.year}';
+  String _formatDate(DateTime dt, SharedL10n? loc) {
+    return DateFormat.yMd(loc?.localeName).format(dt);
   }
 }

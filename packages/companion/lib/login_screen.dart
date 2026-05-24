@@ -1,5 +1,6 @@
 import 'package:dart_couch_widgets/dart_couch.dart';
 import 'package:flutter/material.dart';
+import 'package:shared/shared.dart';
 import 'package:watch_it/watch_it.dart';
 
 import 'login_profile.dart';
@@ -238,37 +239,40 @@ class _LoginScreenState extends State<LoginScreen> {
           leading: const Icon(Icons.dns),
           title: Text(profile.username),
           subtitle: Text(profile.url),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.edit),
-                tooltip: 'Edit',
-                onPressed: () => _openForm(profile),
-              ),
-              IconButton(
-                icon: const Icon(Icons.copy),
-                tooltip: 'Duplicate',
-                onPressed: () => _openForm(
-                  LoginProfile(
-                    url: profile.url,
-                    username: '',
-                    password: profile.password,
+          trailing: Builder(builder: (context) {
+            final l10n = SharedL10n.of(context);
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.edit),
+                  tooltip: l10n.loginEditTooltip,
+                  onPressed: () => _openForm(profile),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.copy),
+                  tooltip: l10n.loginDuplicateTooltip,
+                  onPressed: () => _openForm(
+                    LoginProfile(
+                      url: profile.url,
+                      username: '',
+                      password: profile.password,
+                    ),
                   ),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete),
-                tooltip: 'Delete',
-                onPressed: () => _deleteProfile(profile),
-              ),
-              IconButton(
-                icon: const Icon(Icons.login),
-                tooltip: 'Login',
-                onPressed: () => _login(profile),
-              ),
-            ],
-          ),
+                IconButton(
+                  icon: const Icon(Icons.delete),
+                  tooltip: l10n.loginDeleteTooltip,
+                  onPressed: () => _deleteProfile(profile),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.login),
+                  tooltip: l10n.loginLoginTooltip,
+                  onPressed: () => _login(profile),
+                ),
+              ],
+            );
+          }),
         );
       },
     );
@@ -291,7 +295,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      _editingProfile != null ? 'Edit Profile' : 'New Profile',
+                      _editingProfile != null
+                          ? SharedL10n.of(context).loginEditProfileTitle
+                          : SharedL10n.of(context).loginNewProfileTitle,
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
                     if (_errorMessage != null)
@@ -330,16 +336,17 @@ class _LoginScreenState extends State<LoginScreen> {
                         Expanded(
                           child: TextFormField(
                             controller: _urlController,
-                            decoration: const InputDecoration(
-                              labelText: 'Server URL',
-                              hintText: 'example.com',
-                              prefixIcon: Icon(Icons.link),
+                            decoration: InputDecoration(
+                              labelText: SharedL10n.of(context).loginServerUrlLabel,
+                              hintText: SharedL10n.of(context).loginServerUrlHint,
+                              prefixIcon: const Icon(Icons.link),
                             ),
                             keyboardType: TextInputType.url,
                             textInputAction: TextInputAction.next,
                             validator: (value) {
                               if ((value ?? '').trim().isEmpty) {
-                                return 'Please enter a server URL';
+                                return SharedL10n.of(context)
+                                    .loginPleaseEnterServerUrl;
                               }
                               return null;
                             },
@@ -350,14 +357,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _usernameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Username',
-                        prefixIcon: Icon(Icons.person),
+                      decoration: InputDecoration(
+                        labelText: SharedL10n.of(context).loginUsernameLabel,
+                        prefixIcon: const Icon(Icons.person),
                       ),
                       textInputAction: TextInputAction.next,
                       validator: (value) {
                         if ((value ?? '').trim().isEmpty) {
-                          return 'Please enter a username';
+                          return SharedL10n.of(context).loginPleaseEnterUsername;
                         }
                         return null;
                       },
@@ -366,7 +373,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextFormField(
                       controller: _passwordController,
                       decoration: InputDecoration(
-                        labelText: 'Password',
+                        labelText: SharedL10n.of(context).loginPasswordLabel,
                         prefixIcon: const Icon(Icons.lock),
                         suffixIcon: IconButton(
                           icon: Icon(
@@ -379,7 +386,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       onFieldSubmitted: (_) => _submitForm(),
                       validator: (value) {
                         if ((value ?? '').isEmpty) {
-                          return 'Please enter a password';
+                          return SharedL10n.of(context).loginPleaseEnterPassword;
                         }
                         return null;
                       },
@@ -390,12 +397,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         TextButton(
                           onPressed: _backToList,
-                          child: const Text('Cancel'),
+                          child: Text(SharedL10n.of(context).commonCancel),
                         ),
                         const SizedBox(width: 8),
                         FilledButton(
                           onPressed: _submitForm,
-                          child: const Text('Save'),
+                          child: Text(SharedL10n.of(context).commonSave),
                         ),
                       ],
                     ),

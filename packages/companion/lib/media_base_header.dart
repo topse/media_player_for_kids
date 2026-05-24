@@ -202,7 +202,8 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
       if (clipboard == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Clipboard not available')),
+          SnackBar(
+              content: Text(SharedL10n.of(context).headerClipboardUnavailable)),
         );
         return;
       }
@@ -211,9 +212,9 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
       final reader = await clipboard.read();
       if (reader.items.isEmpty) {
         if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('No data in clipboard')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(SharedL10n.of(context).headerClipboardEmpty)),
+        );
         return;
       }
 
@@ -255,12 +256,15 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
       // If we get here, no supported image format was found
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No supported image format in clipboard')),
+        SnackBar(
+            content: Text(SharedL10n.of(context).headerClipboardUnsupported)),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error reading clipboard: ${e.toString()}')),
+        SnackBar(
+            content: Text(
+                SharedL10n.of(context).headerClipboardError(e.toString()))),
       );
     }
   }
@@ -336,7 +340,8 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
                     if (widget.showChildrenCount &&
                         widget.media is MediaFolder) ...[
                       Text(
-                        '${(widget.media as MediaFolder).sortHint} children',
+                        SharedL10n.of(context).headerChildrenCount(
+                            (widget.media as MediaFolder).sortHint),
                         style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                       ),
                     ],
@@ -352,7 +357,7 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Row(
             children: [
-              const Text('Visisble Date Range:'),
+              Text(SharedL10n.of(context).headerVisibleDateRange),
               const SizedBox(width: 32),
               Container(
                 decoration: BoxDecoration(
@@ -364,14 +369,14 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const SizedBox(width: 16),
-                    const Text('From Date:'),
+                    Text(SharedL10n.of(context).headerFromDate),
                     const SizedBox(width: 4),
                     TextButton(
                       onPressed: _pickFromDate,
                       child: Text(
                         widget.media.fromDateTime != null
                             ? _formatDate(widget.media.fromDateTime!)
-                            : '*Not set*',
+                            : SharedL10n.of(context).headerNotSetPlaceholder,
                       ),
                     ),
                     IconButton(
@@ -394,14 +399,14 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const SizedBox(width: 16),
-                    const Text('To Date:'),
+                    Text(SharedL10n.of(context).headerToDate),
                     const SizedBox(width: 4),
                     TextButton(
                       onPressed: _pickToDate,
                       child: Text(
                         widget.media.toDateTime != null
                             ? _formatDate(widget.media.toDateTime!)
-                            : '*Not set*',
+                            : SharedL10n.of(context).headerNotSetPlaceholder,
                       ),
                     ),
                     IconButton(
@@ -418,6 +423,7 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
         ),
         const Divider(),
         Builder(builder: (context) {
+          final l10n = SharedL10n.of(context);
           final ownConstraint = widget.media.hearingConstraint;
           final inheritedHolder = ownConstraint == null
               ? ConstraintEvaluator.findNearestConstraintHolder(
@@ -430,11 +436,11 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
             leading: const Icon(Icons.timer_outlined),
             title: Row(
               children: [
-                const Text('Hörregeln'),
+                Text(l10n.headerHearingRules),
                 if (inheritedHolder != null) ...[
                   const SizedBox(width: 8),
                   Chip(
-                    label: Text('geerbt von „${inheritedHolder.name}"'),
+                    label: Text(l10n.headerInheritedFrom(inheritedHolder.name)),
                     labelStyle: const TextStyle(fontSize: 11),
                     visualDensity: VisualDensity.compact,
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -445,12 +451,12 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
             ),
             subtitle: Text(
               ownConstraint != null
-                  ? const ConstraintDescriptionGenerator()
+                  ? ConstraintDescriptionGenerator(l10n)
                       .describe(ownConstraint)
                   : inheritedHolder?.hearingConstraint != null
-                      ? const ConstraintDescriptionGenerator()
+                      ? ConstraintDescriptionGenerator(l10n)
                           .describe(inheritedHolder!.hearingConstraint!)
-                      : 'Keine Einschränkungen',
+                      : l10n.headerNoRules,
               style: Theme.of(context).textTheme.bodySmall,
             ),
             trailing: Row(
@@ -460,7 +466,7 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
                   IconButton(
                     icon: const Icon(Icons.delete_outline, size: 20),
                     color: Colors.red[700],
-                    tooltip: 'Hörregeln entfernen',
+                    tooltip: l10n.headerRemoveRulesTooltip,
                     onPressed: () => _setHearingConstraint(null),
                   ),
                 const Icon(Icons.chevron_right),
@@ -482,7 +488,7 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
                 value: widget.media.hidden,
                 onChanged: (_) => _toggleHidden(),
               ),
-              const Text('Hidden'),
+              Text(SharedL10n.of(context).headerHiddenLabel),
             ],
           ),
         ),
@@ -588,12 +594,12 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
                         ? _deleteCoverImage
                         : null,
                     icon: const Icon(Icons.delete),
-                    label: const Text('Remove Image'),
+                    label: Text(SharedL10n.of(context).headerRemoveImage),
                   ),
                   FilledButton.icon(
                     onPressed: _pasteFromClipboard,
                     icon: const Icon(Icons.paste),
-                    label: const Text('Paste Image From Clipboard'),
+                    label: Text(SharedL10n.of(context).headerPasteImage),
                   ),
                 ],
               ),

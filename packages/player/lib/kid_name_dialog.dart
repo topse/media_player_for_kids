@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:shared/shared.dart';
 
 /// Blocking dialog that asks for the kid's name at first startup.
 ///
 /// Returns the entered name, or `null` if somehow dismissed (should not happen
 /// since `barrierDismissible` is false).
 Future<String?> showKidNameDialog(BuildContext context) async {
+  final l10n = SharedL10n.of(context);
   final controller = TextEditingController();
   final formKey = GlobalKey<FormState>();
 
@@ -12,20 +14,20 @@ Future<String?> showKidNameDialog(BuildContext context) async {
     context: context,
     barrierDismissible: false,
     builder: (context) => AlertDialog(
-      title: const Text('Wer benutzt dieses Gerät?'),
+      title: Text(l10n.kidNameTitle),
       content: Form(
         key: formKey,
         child: TextFormField(
           controller: controller,
           autofocus: true,
           textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'Dein Name',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: l10n.kidNameLabel,
+            border: const OutlineInputBorder(),
           ),
           validator: (value) {
             if (value == null || value.trim().isEmpty) {
-              return 'Bitte gib deinen Namen ein';
+              return l10n.kidNamePleaseEnter;
             }
             return null;
           },
@@ -43,7 +45,7 @@ Future<String?> showKidNameDialog(BuildContext context) async {
               Navigator.of(context).pop(controller.text.trim());
             }
           },
-          child: const Text('Fertig'),
+          child: Text(l10n.kidNameDone),
         ),
       ],
     ),

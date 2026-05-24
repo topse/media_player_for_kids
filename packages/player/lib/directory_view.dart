@@ -8,6 +8,7 @@ import 'package:player/hearing_stats_service.dart';
 import 'package:player/media_player_page.dart';
 import 'package:player/play_position_service.dart';
 import 'package:player/widgets/media_app_bar.dart';
+import 'package:shared/l10n/shared_l10n.dart';
 import 'package:shared/models/datatypes.dart';
 import 'package:shared/shared.dart'
     show
@@ -62,12 +63,9 @@ class _DirectoryViewState extends State<DirectoryView>
   double? _computeProgress(MediaItem item) {
     final entry = di<PlayPositionService>().getEntry(item.id!);
     if (entry == null) return null;
-    if (entry.containsKey('done')) return 1.0;
-    if (!entry.containsKey('position')) return null;
-
-    final pos = entry['position'] as Map<String, dynamic>;
-    final trackIndex = pos['track'] as int;
-    final seconds = pos['seconds'] as int;
+    if (entry.done) return 1.0;
+    final pos = entry.position;
+    if (pos == null) return null;
 
     final media = item.media;
     int totalMs = 0;
@@ -75,8 +73,8 @@ class _DirectoryViewState extends State<DirectoryView>
     for (int i = 0; i < media.length; i++) {
       final dMs = media[i].durationMs;
       totalMs += dMs;
-      if (i < trackIndex) elapsedMs += dMs;
-      if (i == trackIndex) elapsedMs += seconds * 1000;
+      if (i < pos.track) elapsedMs += dMs;
+      if (i == pos.track) elapsedMs += pos.seconds * 1000;
     }
     if (totalMs == 0) return null;
     return (elapsedMs / totalMs).clamp(0.0, 1.0);
@@ -184,6 +182,7 @@ class _DirectoryViewState extends State<DirectoryView>
   }
 
   EvaluationResult _evalWithAncestors(
+    BuildContext context,
     MediaBase item,
     Map<String, MediaBase> allDocuments,
   ) {
@@ -201,6 +200,7 @@ class _DirectoryViewState extends State<DirectoryView>
       ),
       globalConstraint: statsService.globalConstraint,
       globalStats: statsService.globalStats(),
+      loc: SharedL10n.of(context),
     );
   }
 
@@ -211,13 +211,14 @@ class _DirectoryViewState extends State<DirectoryView>
   /// that), when no quantifiable allowance applies, or when remaining time
   /// (plus grace) still covers the item.
   bool _cannotFinishWithGrace(
+    BuildContext context,
     MediaBase item,
     Map<String, MediaBase> allDocuments,
     int itemDurationMs,
   ) {
     if (itemDurationMs <= 0) return false;
     if (di<AdminOverrideService>().ignoreConstraints) return false;
-    final evalResult = _evalWithAncestors(item, allDocuments);
+    final evalResult = _evalWithAncestors(context, item, allDocuments);
     if (evalResult.status == ConstraintStatus.blocked) return false;
 
     final statsService = di<HearingStatsService>();
@@ -295,6 +296,7 @@ class _DirectoryViewState extends State<DirectoryView>
       }
     }
 
+    final l10n = SharedL10n.of(context);
     return Scaffold(
       appBar: MediaAppBar(
         onBack: parentNodeId != null
@@ -323,9 +325,10 @@ class _DirectoryViewState extends State<DirectoryView>
                     const Icon(Icons.warning_amber, color: Colors.orange),
                 content: Text(
                   [
-                    if (overrides.ignoreConstraints) 'Hörregeln deaktiviert',
+                    if (overrides.ignoreConstraints)
+                      l10n.directoryHearingRulesDisabled,
                     if (overrides.ignoreDateSettings)
-                      'Datumssperren deaktiviert',
+                      l10n.directoryDateLocksDisabled,
                   ].join(' · '),
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
@@ -333,7 +336,7 @@ class _DirectoryViewState extends State<DirectoryView>
               ),
             Expanded(
               child: rootItems.isEmpty
-                  ? const Center(child: Text('No media items found'))
+                  ? Center(child: Text(l10n.directoryNoMediaItems))
                   : OrientationBuilder(
                 builder: (context, orientation) {
                   final prefs = di<SharedPreferencesWithCache>();
@@ -355,13 +358,13 @@ class _DirectoryViewState extends State<DirectoryView>
                           ? _computeProgress(item)
                           : null;
                       final constraintResult =
-                          _evalWithAncestors(item, allDocuments);
+                          _evalWithAncestors(context, item, allDocuments);
                       final itemDurationMs = item is MediaItem
                           ? item.media.fold<int>(
                               0, (s, t) => s + t.durationMs)
                           : 0;
                       final cannotFinish = _cannotFinishWithGrace(
-                          item, allDocuments, itemDurationMs);
+                          context, item, allDocuments, itemDurationMs);
 
                       return _MediaGridItem(
                         key: ValueKey(item.id),
@@ -379,7 +382,7 @@ class _DirectoryViewState extends State<DirectoryView>
                               SnackBar(
                                 content: Text(
                                   constraintResult.humanReadableReason ??
-                                      'Jetzt nicht verfügbar',
+                                      l10n.directoryItemUnavailable,
                                 ),
                               ),
                             );

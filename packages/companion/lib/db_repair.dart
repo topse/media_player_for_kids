@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dart_couch_widgets/dart_couch.dart';
 import 'package:logging/logging.dart';
 import 'package:shared/shared.dart';
@@ -121,6 +123,13 @@ Future<void> repairDatabase(
   }
   await scanMissingLoudnessData();*/
 
+  // --- 4. Drop hearing-data entries for items that no longer exist ---
+  if (onProgress != null) {
+    onProgress('Cleaning up orphaned hearing data...', 0.7);
+  }
+  final validItemIds = {for (final i in allMediaItems) i.id!};
+  await _cleanupOrphanedHearingData(db, validItemIds);
+
   // --- 5. Clean up expired date rules ---
   if (onProgress != null) {
     onProgress('Cleaning up expired date rules...', 0.85);
@@ -131,6 +140,75 @@ Future<void> repairDatabase(
     onProgress('Finalizing repairs...', 1.0);
   }
 }
+
+/// Drops entries in every `playlog-<uuid>` and `playposition-<uuid>`
+/// document whose key is not in [validItemIds].
+///
+/// `playlog_archive-<uuid>` is deliberately NOT swept: archive items are the
+/// long-term aggregated record of past listening and carry their own `title`
+/// so they remain meaningful even after the original [MediaItem] is gone.
+///
+/// Catches entries left behind by:
+/// - items deleted before the immediate purge on `_deleteItem` existed
+/// - items deleted out-of-band (Fauxton, direct CouchDB edits, scripts)
+/// - races where a deletion replicated but the immediate purge didn't reach
+///   that device's per-device hearing doc
+///
+/// Idempotent — only writes a doc back when at least one entry was removed.
+Future<void> _cleanupOrphanedHearingData(
+  DartCouchDb db,
+  Set<String> validItemIds,
+) async {
+  Future<void> sweep(String prefix, _ItemMapRewriter rewrite) async {
+    final result = await db.allDocs(
+      startkey: jsonEncode(prefix),
+      endkey: jsonEncode('$prefix￿'),
+      includeDocs: true,
+    );
+    for (final row in result.rows) {
+      final doc = row.doc;
+      if (doc == null) continue;
+      final rewritten = rewrite(doc, validItemIds);
+      if (rewritten == null) continue;
+      try {
+        await db.put(rewritten);
+      } catch (e) {
+        _log.severe('Failed to clean orphaned hearing data in ${doc.id}: $e');
+      }
+    }
+  }
+
+  await sweep('playlog-', (doc, ids) {
+    if (doc is! PlayLog) return null;
+    final kept = {
+      for (final e in doc.items.entries)
+        if (ids.contains(e.key)) e.key: e.value,
+    };
+    if (kept.length == doc.items.length) return null;
+    _log.info(
+      'PlayLog ${doc.id}: dropping ${doc.items.length - kept.length} orphaned entry/ies',
+    );
+    return doc.copyWith(items: kept);
+  });
+
+  await sweep('playposition-', (doc, ids) {
+    if (doc is! PlayPosition) return null;
+    final kept = {
+      for (final e in doc.items.entries)
+        if (ids.contains(e.key)) e.key: e.value,
+    };
+    if (kept.length == doc.items.length) return null;
+    _log.info(
+      'PlayPosition ${doc.id}: dropping ${doc.items.length - kept.length} orphaned entry/ies',
+    );
+    return doc.copyWith(items: kept);
+  });
+}
+
+typedef _ItemMapRewriter = CouchDocumentBase? Function(
+  CouchDocumentBase doc,
+  Set<String> validItemIds,
+);
 
 /// Removes date-based visibility rules that are no longer relevant.
 /// This includes:

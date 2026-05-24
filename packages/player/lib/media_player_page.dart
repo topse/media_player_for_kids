@@ -12,7 +12,7 @@ import 'package:player/hearing_stats_service.dart';
 import 'package:player/play_position_service.dart';
 import 'package:player/widgets/media_app_bar.dart';
 import 'package:shared/models/datatypes.dart' as models;
-import 'package:shared/shared.dart' show ConstraintEvaluator, ConstraintStatus, MediaBaseIcon;
+import 'package:shared/shared.dart' show ConstraintEvaluator, ConstraintStatus, MediaBaseIcon, SharedL10n;
 import 'package:watch_it/watch_it.dart';
 
 final _log = Logger('media_player_page');
@@ -62,6 +62,16 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
   bool _isLoading = true;
   bool _completedNaturally = false;
   int _totalItemDurationMs = 0;
+  /// Cumulative start time (ms) of each track within the audiobook, so the
+  /// audiobook slider can map a global position to a (track, local-position)
+  /// pair and paint chapter markers at the file boundaries.
+  late final List<int> _cumulativeTrackStartsMs = _computeCumulativeTrackStarts();
+  /// While the kid is dragging the audiobook slider, this holds the thumb
+  /// position in ms so the slider follows the finger smoothly. The actual
+  /// (potentially cross-track) seek runs only on release in [onChangeEnd] —
+  /// otherwise seeking on every drag tick fights the position stream and the
+  /// thumb feels sticky.
+  double? _audiobookDragMs;
   Timer? _allowanceTimer;
   StreamSubscription<ProcessingState>? _completionSub;
   StreamSubscription<bool>? _playingSub;
@@ -123,15 +133,21 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
 
     final svc = di<PlayPositionService>();
     final itemId = widget.item.id!;
+    final title = widget.item.name;
 
     if (isNearEnd) {
-      svc.saveDone(itemId);
+      svc.saveDone(itemId, title: title);
       return;
     }
 
     if (!di<HearingStatsService>().currentSegmentMeetsThreshold()) return;
 
-    svc.savePosition(itemId, track: currentIndex, seconds: position.inSeconds);
+    svc.savePosition(
+      itemId,
+      title: title,
+      track: currentIndex,
+      seconds: position.inSeconds,
+    );
   }
 
   @override
@@ -270,10 +286,10 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
       // Resume audiobook from saved position
       if (widget.item.isAudioBook) {
         final saved = di<PlayPositionService>().getEntry(widget.item.id!);
-        if (saved != null && saved.containsKey('position')) {
-          final pos = saved['position'] as Map<String, dynamic>;
-          initialTrack = pos['track'] as int;
-          initialPosition = Duration(seconds: pos['seconds'] as int);
+        final pos = saved?.position;
+        if (pos != null) {
+          initialTrack = pos.track;
+          initialPosition = Duration(seconds: pos.seconds);
         }
       }
 
@@ -336,7 +352,10 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
         di<HearingStatsService>().recordPlayCompletion(widget.item.id!);
         _clearNewFlagIfThresholdMet();
         if (widget.item.isAudioBook) {
-          di<PlayPositionService>().saveDone(widget.item.id!);
+          di<PlayPositionService>().saveDone(
+            widget.item.id!,
+            title: widget.item.name,
+          );
         }
         _audioService.stop();
         Navigator.of(context).pop();
@@ -406,6 +425,44 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
     _scheduleAllowanceTimer();
   }
 
+  List<int> _computeCumulativeTrackStarts() {
+    final media = widget.item.media;
+    final starts = List<int>.filled(media.length, 0);
+    for (int i = 1; i < media.length; i++) {
+      starts[i] = starts[i - 1] + media[i - 1].durationMs;
+    }
+    return starts;
+  }
+
+  /// Track-boundary positions as fractions in [0,1] of the total audiobook
+  /// duration, used to paint chapter markers on the slider. Excludes 0 and 1
+  /// (start/end of the slider).
+  List<double> _chapterFractions() {
+    if (_totalItemDurationMs <= 0) return const [];
+    final total = _totalItemDurationMs.toDouble();
+    return [
+      for (int i = 1; i < _cumulativeTrackStartsMs.length; i++)
+        _cumulativeTrackStartsMs[i] / total,
+    ];
+  }
+
+  /// Seek to a position expressed in milliseconds across the whole
+  /// audiobook (not within a single track). Picks the right track from
+  /// the cumulative starts and seeks to the local offset.
+  void _seekGlobalMs(int globalMs) {
+    final media = widget.item.media;
+    if (media.isEmpty) return;
+    int target = 0;
+    for (int i = media.length - 1; i >= 0; i--) {
+      if (globalMs >= _cumulativeTrackStartsMs[i]) {
+        target = i;
+        break;
+      }
+    }
+    final localMs = globalMs - _cumulativeTrackStartsMs[target];
+    _audioService.player.seek(Duration(milliseconds: localMs), index: target);
+  }
+
   /// Milliseconds from the current playhead to the natural end of the
   /// playlist. Returns 0 if no playback is active. Ignores repeat mode —
   /// callers handle that separately.
@@ -458,7 +515,7 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
     _audioService.stop();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hörzeit aufgebraucht')),
+        SnackBar(content: Text(SharedL10n.of(context).playerListeningTimeUp)),
       );
       Navigator.of(context).pop();
     }
@@ -637,6 +694,78 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
                               builder: (context, posSnapshot) {
                                 final position =
                                     posSnapshot.data ?? Duration.zero;
+                                // Audiobooks: one global slider spanning the
+                                // whole item, with chapter markers at file
+                                // boundaries. Other items: per-track slider.
+                                if (widget.item.isAudioBook &&
+                                    hasMultipleTracks &&
+                                    _totalItemDurationMs > 0) {
+                                  final idx = indexSnapshot.data ??
+                                      _audioService.player.currentIndex ??
+                                      0;
+                                  final safeIdx = idx.clamp(
+                                      0, _cumulativeTrackStartsMs.length - 1);
+                                  final playheadMs =
+                                      (_cumulativeTrackStartsMs[safeIdx] +
+                                              position.inMilliseconds)
+                                          .clamp(0, _totalItemDurationMs)
+                                          .toDouble();
+                                  final maxMs =
+                                      _totalItemDurationMs.toDouble();
+                                  // While dragging, the slider follows the
+                                  // finger; otherwise it follows the audio.
+                                  final sliderValue =
+                                      (_audiobookDragMs ?? playheadMs)
+                                          .clamp(0.0, maxMs);
+                                  final displayMs = sliderValue.toInt();
+
+                                  return Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SliderTheme(
+                                        data: SliderTheme.of(context).copyWith(
+                                          trackShape:
+                                              _ChapterMarkerTrackShape(
+                                            chapterFractions:
+                                                _chapterFractions(),
+                                          ),
+                                        ),
+                                        child: Slider(
+                                          value: sliderValue,
+                                          min: 0.0,
+                                          max: maxMs,
+                                          onChangeStart: (value) {
+                                            setState(() {
+                                              _audiobookDragMs = value;
+                                            });
+                                          },
+                                          onChanged: (value) {
+                                            setState(() {
+                                              _audiobookDragMs = value;
+                                            });
+                                          },
+                                          onChangeEnd: (value) {
+                                            _saveCurrentPosition();
+                                            di<HearingStatsService>()
+                                                .recordSeek(widget.item.id!);
+                                            _seekGlobalMs(value.toInt());
+                                            _scheduleAllowanceTimer();
+                                            setState(() {
+                                              _audiobookDragMs = null;
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                      Text(
+                                        '${_formatDuration(Duration(milliseconds: displayMs))} / ${_formatDuration(Duration(milliseconds: _totalItemDurationMs))}',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodySmall,
+                                      ),
+                                    ],
+                                  );
+                                }
+
                                 final duration =
                                     _audioService.player.duration ??
                                     Duration.zero;
@@ -804,5 +933,70 @@ class _TrackCoverImageState extends State<_TrackCoverImage> {
     }
     // Fallback to item cover
     return MediaBaseIcon(media: widget.fallbackItem, iconSize: widget.iconSize);
+  }
+}
+
+/// Slider track shape that paints thin chapter-boundary notches on top of
+/// the default rounded track. Used by the audiobook slider so the kid can
+/// see where each file (chapter) begins.
+class _ChapterMarkerTrackShape extends RoundedRectSliderTrackShape {
+  final List<double> chapterFractions;
+
+  const _ChapterMarkerTrackShape({required this.chapterFractions});
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset offset, {
+    required RenderBox parentBox,
+    required SliderThemeData sliderTheme,
+    required Animation<double> enableAnimation,
+    required TextDirection textDirection,
+    required Offset thumbCenter,
+    Offset? secondaryOffset,
+    bool isDiscrete = false,
+    bool isEnabled = false,
+    double additionalActiveTrackHeight = 2,
+  }) {
+    super.paint(
+      context,
+      offset,
+      parentBox: parentBox,
+      sliderTheme: sliderTheme,
+      enableAnimation: enableAnimation,
+      textDirection: textDirection,
+      thumbCenter: thumbCenter,
+      secondaryOffset: secondaryOffset,
+      isDiscrete: isDiscrete,
+      isEnabled: isEnabled,
+      additionalActiveTrackHeight: additionalActiveTrackHeight,
+    );
+
+    if (chapterFractions.isEmpty) return;
+
+    final trackRect = getPreferredRect(
+      parentBox: parentBox,
+      offset: offset,
+      sliderTheme: sliderTheme,
+      isEnabled: isEnabled,
+      isDiscrete: isDiscrete,
+    );
+
+    final notchHeight = trackRect.height * 2.5;
+    final centerY = trackRect.center.dy;
+    final paint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.55)
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
+
+    for (final fraction in chapterFractions) {
+      if (fraction <= 0 || fraction >= 1) continue;
+      final x = trackRect.left + trackRect.width * fraction;
+      context.canvas.drawLine(
+        Offset(x, centerY - notchHeight / 2),
+        Offset(x, centerY + notchHeight / 2),
+        paint,
+      );
+    }
   }
 }

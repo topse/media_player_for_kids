@@ -24,7 +24,7 @@ The app is designed for children to browse and play curated media from a CouchDB
 - Audio device detection: custom platform channel to Android `AudioManager`
 - Local persistence:
   - `SharedPreferencesWithCache` for admin password, audio-device volume configs, grid column settings, and hearing constraint admin values
-  - CouchDB local document for audiobook play positions
+  - Replicated CouchDB document (`playposition-<deviceUuid>`) for audiobook play positions and "done" markers — see root [CLAUDE.md](../../CLAUDE.md) for the cross-package storage decision
 
 ## Main User Flows
 

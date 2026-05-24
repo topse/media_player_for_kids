@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:player/main.dart';
 import 'package:player/widgets/constraint_allowance_indicator.dart';
 import 'package:shared/models/datatypes.dart';
-import 'package:shared/shared.dart' show MediaBaseIcon;
+import 'package:shared/shared.dart' show MediaBaseIcon, SharedL10n;
 import 'package:watch_it/watch_it.dart';
 
 class MediaAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -29,6 +29,7 @@ class MediaAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     return AppBar(
       leading: onBack != null
           ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: onBack)
@@ -38,7 +39,7 @@ class MediaAppBar extends StatelessWidget implements PreferredSizeWidget {
               ancestors: ancestors!,
               allDocuments: allDocuments ?? {},
             )
-          : const Text('Media Player for kids'),
+          : Text(l10n.playerAppTitle),
       actions: [
         ConstraintAllowanceIndicator(
           item: currentItem,
@@ -65,9 +66,9 @@ class MediaAppBar extends StatelessWidget implements PreferredSizeWidget {
             }
           },
           itemBuilder: (context) => [
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'admin',
-              child: Text('Show Admin Options'),
+              child: Text(l10n.playerMenuShowAdmin),
             ),
           ],
         ),

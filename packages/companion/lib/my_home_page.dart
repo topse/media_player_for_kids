@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dart_couch_widgets/dart_couch.dart';
 import 'package:flutter/material.dart';
@@ -217,9 +218,10 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     final effectivelyNewById = buildEffectiveIsNewMap(_allDocumentsMap);
 
+    final l10n = SharedL10n.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Media Player for kids Companion'),
+        title: Text(l10n.companionAppTitle),
         actions: [
           const AudioPlaybackControls(),
           PopupMenuButton<String>(
@@ -233,21 +235,21 @@ class _MyHomePageState extends State<MyHomePage> {
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'global_constraints',
                 child: ListTile(
-                  leading: Icon(Icons.public),
-                  title: Text('Globale Einschränkungen'),
+                  leading: const Icon(Icons.public),
+                  title: Text(l10n.companionGlobalConstraintsMenu),
                   contentPadding: EdgeInsets.zero,
                   visualDensity: VisualDensity.compact,
                 ),
               ),
               const PopupMenuDivider(),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'logout',
                 child: ListTile(
-                  leading: Icon(Icons.logout),
-                  title: Text('Abmelden'),
+                  leading: const Icon(Icons.logout),
+                  title: Text(l10n.companionLogoutMenu),
                   contentPadding: EdgeInsets.zero,
                   visualDensity: VisualDensity.compact,
                 ),
@@ -588,33 +590,48 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _deleteItem(IndexedTreeNode node) async {
+    final l10n = SharedL10n.of(context);
     // Collect all descendants to be deleted
     final descendants = _collectAllDescendants(node);
     final descendantCount = descendants.length;
+    final kind = node is IndexedTreeNode<MediaFolder>
+        ? l10n.commonFolder
+        : l10n.commonItem;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete?'),
+        title: Text(l10n.companionDeleteTitle),
         content: Text(
           descendantCount == 0
-              ? 'Really delete ${node is IndexedTreeNode<MediaFolder> ? 'folder' : 'item'} "${node.data.name}"?'
-              : 'Really delete ${node is IndexedTreeNode<MediaFolder> ? 'folder' : 'item'} "${node.data.name}" and its $descendantCount child${descendantCount == 1 ? '' : 'ren'}?',
+              ? l10n.companionDeleteOneConfirm(kind, node.data.name)
+              : l10n.companionDeleteManyConfirm(
+                  kind, node.data.name, descendantCount),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('No'),
+            child: Text(l10n.commonNo),
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Yes'),
+            child: Text(l10n.commonYes),
           ),
         ],
       ),
     );
 
     if (confirmed == true) {
+      // Collect every doomed item ID before any removal so we can also
+      // purge their play-position entries from every device's
+      // `playposition-<deviceUuid>` document. Folders are included too —
+      // a constraint-bearing folder won't have a position entry but a
+      // folder turned into an item later might; cheaper to be uniform.
+      final removedIds = <String>{
+        for (final d in descendants) d.data.id!,
+        node.data.id!,
+      };
+
       // Delete all descendants first (bottom-up)
       for (final descendant in descendants.reversed) {
         await di<DartCouchDb>().remove(
@@ -625,6 +642,36 @@ class _MyHomePageState extends State<MyHomePage> {
 
       // Finally delete the node itself
       await di<DartCouchDb>().remove(node.data.id!, node.data.rev!);
+
+      await _purgePlayPositionsFor(removedIds);
+    }
+  }
+
+  /// Removes entries for any of [removedIds] from every replicated
+  /// `playposition-<deviceUuid>` document. Each device owns its own doc, so
+  /// we list all of them via [DartCouchDb.allDocs] and rewrite the ones
+  /// that referenced a removed item.
+  Future<void> _purgePlayPositionsFor(Set<String> removedIds) async {
+    if (removedIds.isEmpty) return;
+    final db = di<DartCouchDb>();
+
+    final result = await db.allDocs(
+      startkey: jsonEncode('playposition-'),
+      endkey: jsonEncode('playposition-￿'),
+      includeDocs: true,
+    );
+
+    for (final row in result.rows) {
+      final doc = row.doc;
+      if (doc is! PlayPosition) continue;
+
+      final filtered = <String, PlayPositionItem>{
+        for (final e in doc.items.entries)
+          if (!removedIds.contains(e.key)) e.key: e.value,
+      };
+      if (filtered.length == doc.items.length) continue;
+
+      await db.put(doc.copyWith(items: filtered));
     }
   }
 }
@@ -682,17 +729,18 @@ class _CreateNewDialogState extends State<_CreateNewDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     return KeyboardListener(
       focusNode: _focusNode,
       onKeyEvent: _handleKeyEvent,
       child: AlertDialog(
-        title: const Text('Create new'),
+        title: Text(l10n.companionCreateNewTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
               leading: const Icon(Icons.folder),
-              title: const Text('Folder'),
+              title: Text(l10n.commonFolderCapitalized),
               selected: _selectedIndex == 0,
               onTap: () => setState(() => _selectedIndex = 0),
               tileColor: _selectedIndex == 0
@@ -702,7 +750,7 @@ class _CreateNewDialogState extends State<_CreateNewDialog> {
             const SizedBox(height: 8),
             ListTile(
               leading: const Icon(Icons.audio_file),
-              title: const Text('Media Item'),
+              title: Text(l10n.commonMediaItem),
               selected: _selectedIndex == 1,
               onTap: () => setState(() => _selectedIndex = 1),
               tileColor: _selectedIndex == 1
@@ -714,9 +762,12 @@ class _CreateNewDialogState extends State<_CreateNewDialog> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
-          ElevatedButton(onPressed: _confirmSelection, child: const Text('OK')),
+          ElevatedButton(
+            onPressed: _confirmSelection,
+            child: Text(l10n.commonOk),
+          ),
         ],
       ),
     );

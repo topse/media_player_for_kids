@@ -41,23 +41,21 @@ Future<bool> showCompressionPrompt(BuildContext context, int uncompressedCount) 
     context: context,
     barrierDismissible: false, // User must make a choice
     builder: (BuildContext context) {
-      String fileText = uncompressedCount == 1 ? '1 file' : '$uncompressedCount files';
-      
+      final l10n = SharedL10n.of(context);
+      final fileText = l10n.audioImportFileCount(uncompressedCount);
+
       return AlertDialog(
-        title: const Text('Compress Audio Files?'),
-        content: Text(
-          '$fileText not highly compressed. Compress to AAC (160kbps stereo/80kbps mono)?\n\n'
-          'Quality will be indistinguishable from CD. Original files will not be modified.',
-        ),
+        title: Text(l10n.audioImportCompressTitle),
+        content: Text(l10n.audioImportCompressBody(fileText)),
         actions: <Widget>[
           TextButton(
-            child: const Text('No, keep originals'),
+            child: Text(l10n.audioImportKeepOriginals),
             onPressed: () {
               Navigator.of(context).pop(false);
             },
           ),
           ElevatedButton(
-            child: const Text('Yes, compress'),
+            child: Text(l10n.audioImportCompress),
             onPressed: () {
               Navigator.of(context).pop(true);
             },
@@ -84,7 +82,7 @@ class ImportProgressDialog {
         completedFiles: 0,
         totalFiles: totalFiles,
         importedFiles: 0,
-        message: 'Preparing import...',
+        message: SharedL10n.of(context).audioImportPreparing,
       ),
     );
   }
@@ -95,38 +93,42 @@ class ImportProgressDialog {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Importing files'),
-        content: ValueListenableBuilder<ImportProgress>(
-          valueListenable: _notifier,
-          builder: (context, progress, child) {
-            final percent = (progress.fraction * 100).toStringAsFixed(0);
-            return SizedBox(
-              width: 380,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Processed ${progress.completedFiles}/${progress.totalFiles} files',
-                  ),
-                  const SizedBox(height: 8),
-                  LinearProgressIndicator(value: progress.fraction),
-                  const SizedBox(height: 6),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Text('$percent%'),
-                  ),
-                  const SizedBox(height: 8),
-                  Text('Imported ${progress.importedFiles} file(s)'),
-                  const SizedBox(height: 8),
-                  Text(progress.message),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
+      builder: (context) {
+        final l10n = SharedL10n.of(context);
+        return AlertDialog(
+          title: Text(l10n.audioImportInProgressTitle),
+          content: ValueListenableBuilder<ImportProgress>(
+            valueListenable: _notifier,
+            builder: (context, progress, child) {
+              final percent = (progress.fraction * 100).round();
+              return SizedBox(
+                width: 380,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(l10n.audioImportProcessedLine(
+                      progress.completedFiles,
+                      progress.totalFiles,
+                    )),
+                    const SizedBox(height: 8),
+                    LinearProgressIndicator(value: progress.fraction),
+                    const SizedBox(height: 6),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(l10n.audioImportTotalProgress(percent)),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(l10n.audioImportProgressLine(progress.importedFiles)),
+                    const SizedBox(height: 8),
+                    Text(progress.message),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -242,26 +244,32 @@ importAudioFilesToDocument({
     _log.info("$filename has ContentType $contentType");
 
     try {
-      prog?.update('Importing file\n$filename');
+      final l10n = context.mounted ? SharedL10n.of(context) : null;
+      prog?.update(l10n?.audioImportImportingFile(filename) ??
+          'Importing file\n$filename');
 
       if (!contentType.startsWith('audio/') &&
           !contentType.startsWith('video/')) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Unsupported file type: $filename')),
+            SnackBar(
+                content: Text(SharedL10n.of(context)
+                    .audioImportUnsupported(filename))),
           );
         }
-        prog?.update('Skipped unsupported file\n$filename');
+        prog?.update(l10n?.audioImportSkippedFile(filename) ??
+            'Skipped unsupported file\n$filename');
         continue;
       }
 
       // Determine the file to use for import (original or compressed)
       String fileToUse = path;
       bool isCompressed = false;
-      
+
       // Check if this file should be compressed
       if (shouldCompress && isUncompressedFile(path)) {
-        prog?.update('Compressing file\n$filename');
+        prog?.update(l10n?.audioImportCompressingFile(filename) ??
+            'Compressing file\n$filename');
         
         // Create compressed version
         final compressedPath = '${tempDir.path}/$filename.compressed.m4a';
@@ -397,13 +405,17 @@ importAudioFilesToDocument({
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error adding file: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(SharedL10n.of(context)
+                  .audioImportErrorAdding(e.toString()))),
+        );
       }
     } finally {
       prog?.fileCompleted();
-      prog?.update('Finished file\n$filename');
+      prog?.update(context.mounted
+          ? SharedL10n.of(context).audioImportFinishedFile(filename)
+          : 'Finished file\n$filename');
     }
   }
 

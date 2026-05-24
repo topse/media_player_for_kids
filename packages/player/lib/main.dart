@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:dart_couch_widgets/dart_couch.dart';
 import 'package:dart_couch_widgets/dart_couch_widgets.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:logging/logging.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -25,24 +26,22 @@ import 'package:watch_it/watch_it.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   DartCouchDb.ensureInitialized();
+  await initializeDateFormatting();
 
   initializeMappers();
 
   Logger.root.level = Level.FINEST; // defaults to Level.INFO
   Logger.root.onRecord.listen((record) {
+    if (record.loggerName.startsWith('dart_couch')) {
+      // Don't log dart_couch stuff, it's not in focus here. Adjust the filter as needed when debugging.
+      return;
+    }
     LineSplitter ls = LineSplitter();
     for (final line in ls.convert(record.message)) {
-      if (line.startsWith('dart_couch')) {
-        // Don't log dart stuff, it's too verbose. Adjust the filter as needed when debugging.
-        continue;
-      }
       // ignore: avoid_print
       print('${record.loggerName} ${record.level.name}: ${record.time}: $line');
     }
   });
-
-  OfflineFirstServer server = OfflineFirstServer(migration: MyMigration());
-  di.registerSingleton<DartCouchServer>(server);
 
   SharedPreferencesWithCache prefs = await SharedPreferencesWithCache.create(
     cacheOptions: const SharedPreferencesWithCacheOptions(
@@ -62,6 +61,9 @@ void main() async {
     ),
   );
   di.registerSingleton<SharedPreferencesWithCache>(prefs);
+
+  OfflineFirstServer server = OfflineFirstServer(migration: MyMigration());
+  di.registerSingleton<DartCouchServer>(server);
 
   // AudioDeviceService must be registered before AudioPlayerService so the
   // player can attach a listener to it during init().
@@ -101,6 +103,8 @@ class _MainAppState extends State<MainApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      localizationsDelegates: SharedL10n.localizationsDelegates,
+      supportedLocales: SharedL10n.supportedLocales,
       home: Builder(
         builder: (context) => AdminPasswordGate(
           child: FutureBuilder<Directory>(
@@ -113,6 +117,8 @@ class _MainAppState extends State<MainApp> {
               final localFilePath = p.join(snapshot.data!.path, 'DartCouchDb');
               return MaterialApp(
                 title: 'Media Player for kids Companion',
+                localizationsDelegates: SharedL10n.localizationsDelegates,
+                supportedLocales: SharedL10n.supportedLocales,
                 theme: ThemeData(
                   colorScheme: ColorScheme.fromSeed(
                     seedColor: Colors.deepPurple,
@@ -135,9 +141,6 @@ class _MainAppState extends State<MainApp> {
                     );
                     if (db != null) {
                       di.registerSingleton<DartCouchDb>(db);
-                      final playPos = PlayPositionService();
-                      di.registerSingleton<PlayPositionService>(playPos);
-                      await playPos.load();
 
                       // Device identity: generate UUID on first run.
                       final prefs = di<SharedPreferencesWithCache>();
@@ -146,6 +149,10 @@ class _MainAppState extends State<MainApp> {
                         deviceUuid = const Uuid().v4();
                         await prefs.setString('device_uuid', deviceUuid);
                       }
+
+                      final playPos = PlayPositionService();
+                      di.registerSingleton<PlayPositionService>(playPos);
+                      await playPos.load(deviceUuid);
 
                       // Initialise hearing stats from the playlog document.
                       await di<HearingStatsService>().init(deviceUuid);
@@ -192,6 +199,7 @@ class AdminPasswordGate extends StatefulWidget {
   /// Shows a dialog to verify admin password
   /// Returns true if password is correct, false if cancelled or incorrect
   static Future<bool> requestPasswordVerification(BuildContext context) async {
+    final l10n = SharedL10n.of(context);
     final TextEditingController controller = TextEditingController();
     final formKey = GlobalKey<FormState>();
 
@@ -199,20 +207,20 @@ class AdminPasswordGate extends StatefulWidget {
       context: context,
       barrierDismissible: true,
       builder: (context) => AlertDialog(
-        title: const Text('Admin Access Required'),
+        title: Text(l10n.adminAccessRequired),
         content: Form(
           key: formKey,
           child: TextFormField(
             controller: controller,
             obscureText: true,
             autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'Admin Password',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: l10n.adminPassword,
+              border: const OutlineInputBorder(),
             ),
             validator: (value) {
               if (!verifyPassword(value ?? '')) {
-                return 'Incorrect password';
+                return l10n.adminPasswordIncorrect;
               }
               return null;
             },
@@ -226,7 +234,7 @@ class AdminPasswordGate extends StatefulWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           TextButton(
             onPressed: () {
@@ -234,7 +242,7 @@ class AdminPasswordGate extends StatefulWidget {
                 Navigator.of(context).pop(true);
               }
             },
-            child: const Text('Verify'),
+            child: Text(l10n.adminPasswordVerify),
           ),
         ],
       ),
@@ -246,6 +254,7 @@ class AdminPasswordGate extends StatefulWidget {
   /// Shows a dialog to change the admin password
   /// Returns true if password was changed, false if cancelled or failed
   static Future<bool> changePassword(BuildContext context) async {
+    final l10n = SharedL10n.of(context);
     final TextEditingController currentController = TextEditingController();
     final TextEditingController newController = TextEditingController();
     final TextEditingController confirmController = TextEditingController();
@@ -256,7 +265,7 @@ class AdminPasswordGate extends StatefulWidget {
       context: context,
       barrierDismissible: true,
       builder: (context) => AlertDialog(
-        title: const Text('Change Admin Password'),
+        title: Text(l10n.adminPasswordChangeTitle),
         content: Form(
           key: formKey,
           child: Column(
@@ -265,14 +274,14 @@ class AdminPasswordGate extends StatefulWidget {
               TextFormField(
                 controller: currentController,
                 obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Current Password',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l10n.adminPasswordCurrent,
+                  border: const OutlineInputBorder(),
                 ),
                 validator: (value) {
                   final currentPassword = prefs.getString('admin_password');
                   if (value != currentPassword) {
-                    return 'Incorrect current password';
+                    return l10n.adminPasswordIncorrectCurrent;
                   }
                   return null;
                 },
@@ -281,16 +290,16 @@ class AdminPasswordGate extends StatefulWidget {
               TextFormField(
                 controller: newController,
                 obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'New Password',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l10n.adminPasswordNew,
+                  border: const OutlineInputBorder(),
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Please enter a new password';
+                    return l10n.adminPasswordPleaseEnterNew;
                   }
                   if (value.length < 4) {
-                    return 'Password must be at least 4 characters';
+                    return l10n.adminPasswordTooShort;
                   }
                   return null;
                 },
@@ -299,13 +308,13 @@ class AdminPasswordGate extends StatefulWidget {
               TextFormField(
                 controller: confirmController,
                 obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Confirm New Password',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l10n.adminPasswordConfirmNew,
+                  border: const OutlineInputBorder(),
                 ),
                 validator: (value) {
                   if (value != newController.text) {
-                    return 'Passwords do not match';
+                    return l10n.adminPasswordsDoNotMatch;
                   }
                   return null;
                 },
@@ -316,7 +325,7 @@ class AdminPasswordGate extends StatefulWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           TextButton(
             onPressed: () async {
@@ -327,7 +336,7 @@ class AdminPasswordGate extends StatefulWidget {
                 }
               }
             },
-            child: const Text('Change Password'),
+            child: Text(l10n.adminPasswordChange),
           ),
         ],
       ),
@@ -365,6 +374,7 @@ class _AdminPasswordGateState extends State<AdminPasswordGate> {
   }
 
   Future<void> _showSetPasswordDialog() async {
+    final l10n = SharedL10n.of(context);
     final TextEditingController passwordController = TextEditingController();
     final TextEditingController confirmController = TextEditingController();
     final formKey = GlobalKey<FormState>();
@@ -373,30 +383,30 @@ class _AdminPasswordGateState extends State<AdminPasswordGate> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Set Admin Password'),
+        title: Text(l10n.adminPasswordSetTitle),
         content: Form(
           key: formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Please set an admin password for first-time setup.',
-                style: TextStyle(fontSize: 14),
+              Text(
+                l10n.adminPasswordSetExplanation,
+                style: const TextStyle(fontSize: 14),
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: passwordController,
                 obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l10n.adminPasswordPlain,
+                  border: const OutlineInputBorder(),
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Please enter a password';
+                    return l10n.adminPasswordPleaseEnter;
                   }
                   if (value.length < 4) {
-                    return 'Password must be at least 4 characters';
+                    return l10n.adminPasswordTooShort;
                   }
                   return null;
                 },
@@ -405,13 +415,13 @@ class _AdminPasswordGateState extends State<AdminPasswordGate> {
               TextFormField(
                 controller: confirmController,
                 obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Confirm Password',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l10n.adminPasswordConfirm,
+                  border: const OutlineInputBorder(),
                 ),
                 validator: (value) {
                   if (value != passwordController.text) {
-                    return 'Passwords do not match';
+                    return l10n.adminPasswordsDoNotMatch;
                   }
                   return null;
                 },
@@ -427,7 +437,7 @@ class _AdminPasswordGateState extends State<AdminPasswordGate> {
                 Navigator.of(context).pop();
               }
             },
-            child: const Text('Set Password'),
+            child: Text(l10n.adminPasswordSet),
           ),
         ],
       ),
@@ -470,7 +480,8 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
   late int _landscapeColumns;
   late int _minPlaySeconds;
   late int _gracePeriodMinutes;
-  String? _versionLabel;
+  String? _appVersion;
+  String? _appBuild;
 
   @override
   void initState() {
@@ -490,7 +501,8 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
     final info = await PackageInfo.fromPlatform();
     if (!mounted) return;
     setState(() {
-      _versionLabel = 'Version ${info.version} (Build ${info.buildNumber})';
+      _appVersion = info.version;
+      _appBuild = info.buildNumber;
     });
   }
 
@@ -528,19 +540,23 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
+    final versionLabel = (_appVersion != null && _appBuild != null)
+        ? l10n.adminVersion(_appVersion!, _appBuild!)
+        : l10n.adminVersionLoading;
     return Scaffold(
-      appBar: AppBar(title: const Text('Admin Settings')),
+      appBar: AppBar(title: Text(l10n.adminSettingsTitle)),
       body: ListView(
         children: [
           ListTile(
             leading: const Icon(Icons.lock),
-            title: const Text('Change Admin Password'),
+            title: Text(l10n.adminPasswordChangeTitle),
             onTap: () async {
               final changed = await AdminPasswordGate.changePassword(context);
               if (changed && context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Password changed successfully'),
+                  SnackBar(
+                    content: Text(l10n.adminPasswordChangedSnack),
                   ),
                 );
               }
@@ -549,8 +565,8 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
           const Divider(),
           ListTile(
             leading: const Icon(Icons.speaker_group),
-            title: const Text('Audio Output Devices'),
-            subtitle: const Text('Set volume limits per output device'),
+            title: Text(l10n.adminAudioOutputDevices),
+            subtitle: Text(l10n.adminAudioOutputDevicesSubtitle),
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
@@ -566,7 +582,7 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
                 const Icon(Icons.grid_view, color: Colors.grey),
                 const SizedBox(width: 16),
                 Text(
-                  'Grid Columns (Portrait): $_portraitColumns',
+                  l10n.adminGridColumnsPortrait(_portraitColumns),
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ],
@@ -587,7 +603,7 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
                 const Icon(Icons.grid_view, color: Colors.grey),
                 const SizedBox(width: 16),
                 Text(
-                  'Grid Columns (Landscape): $_landscapeColumns',
+                  l10n.adminGridColumnsLandscape(_landscapeColumns),
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ],
@@ -609,7 +625,7 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
                 const Icon(Icons.hearing, color: Colors.grey),
                 const SizedBox(width: 16),
                 Text(
-                  'Hörregeln',
+                  l10n.adminHearingRulesSection,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ],
@@ -618,9 +634,7 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
             child: Text(
-              'Mindestdauer, ab der ein Abspielvorgang gezählt wird und '
-              'der Abspielfortschritt eines Hörbuchs gespeichert wird. '
-              'Titel die kürzer sind als dieser Wert zählen immer.',
+              l10n.adminMinPlayDurationDescription,
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
@@ -631,8 +645,8 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: Text(
               _minPlaySeconds == 0
-                  ? 'Mindestdauer: deaktiviert'
-                  : 'Mindestdauer: $_minPlaySeconds s',
+                  ? l10n.adminMinPlayDurationDisabled
+                  : l10n.adminMinPlayDuration(_minPlaySeconds),
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
@@ -641,14 +655,15 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
             min: 0,
             max: 120,
             divisions: 24,
-            label: _minPlaySeconds == 0 ? 'aus' : '$_minPlaySeconds s',
+            label: _minPlaySeconds == 0
+                ? l10n.adminMinPlaySliderLabelOff
+                : l10n.adminMinPlaySliderLabel(_minPlaySeconds),
             onChanged: (v) => _setMinPlaySeconds(v.round()),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
             child: Text(
-              'Wenn die Hörzeit abläuft und der Titel hat noch weniger als '
-              'diese Zeit übrig, darf das Kind fertig hören.',
+              l10n.adminGracePeriodDescription,
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
@@ -658,7 +673,7 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: Text(
-              'Kulanzzeit: $_gracePeriodMinutes min',
+              l10n.adminGracePeriod(_gracePeriodMinutes),
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
@@ -667,13 +682,13 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
             min: 1,
             max: 30,
             divisions: 29,
-            label: '$_gracePeriodMinutes min',
+            label: l10n.adminGraceSliderLabel(_gracePeriodMinutes),
             onChanged: (v) => _setGracePeriodMinutes(v.round()),
           ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.info_outline),
-            title: Text(_versionLabel ?? 'Version …'),
+            title: Text(versionLabel),
             dense: true,
           ),
         ],

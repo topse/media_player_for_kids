@@ -57,20 +57,23 @@ class _MediaFolderDialogState extends State<MediaFolderDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     return AlertDialog(
-      title: Text(widget.folder == null ? 'Create Folder' : 'Edit Folder'),
+      title: Text(widget.folder == null
+          ? l10n.folderDialogCreateTitle
+          : l10n.folderDialogEditTitle),
       content: TextField(
         controller: _controller,
         autofocus: true,
-        decoration: const InputDecoration(labelText: 'Folder name'),
+        decoration: InputDecoration(labelText: l10n.folderDialogNameLabel),
         onSubmitted: (_) => _submit(),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(l10n.commonCancel),
         ),
-        ElevatedButton(onPressed: _submit, child: const Text('Save')),
+        ElevatedButton(onPressed: _submit, child: Text(l10n.commonSave)),
       ],
     );
   }

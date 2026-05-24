@@ -67,9 +67,10 @@ class _GlobalConstraintPageState extends State<GlobalConstraintPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Globale Einschränkungen'),
+        title: Text(l10n.companionGlobalConstraintsMenu),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -90,7 +91,7 @@ class _GlobalConstraintPageState extends State<GlobalConstraintPage> {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  'Globale Hörregeln',
+                                  l10n.globalConstraintsHeading,
                                   style: Theme.of(context)
                                       .textTheme
                                       .titleLarge,
@@ -100,11 +101,7 @@ class _GlobalConstraintPageState extends State<GlobalConstraintPage> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Beschränkt die gesamte tägliche/wöchentliche '
-                            'Hörzeit über alle Inhalte hinweg. '
-                            'Wird zusätzlich zu den Einschränkungen '
-                            'einzelner Einträge ausgewertet '
-                            '(die strengere Regel gewinnt).',
+                            l10n.globalConstraintsDescription,
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                           const SizedBox(height: 16),
@@ -126,7 +123,7 @@ class _GlobalConstraintPageState extends State<GlobalConstraintPage> {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Text(
-                                      const ConstraintDescriptionGenerator()
+                                      ConstraintDescriptionGenerator(l10n)
                                           .describe(_constraint!),
                                       style: const TextStyle(fontSize: 14),
                                     ),
@@ -134,7 +131,8 @@ class _GlobalConstraintPageState extends State<GlobalConstraintPage> {
                                   IconButton(
                                     icon: const Icon(Icons.delete_outline,
                                         color: Colors.red),
-                                    tooltip: 'Einschränkung entfernen',
+                                    tooltip:
+                                        l10n.globalConstraintsRemoveTooltip,
                                     onPressed: () =>
                                         _saveConstraint(null),
                                   ),
@@ -149,8 +147,8 @@ class _GlobalConstraintPageState extends State<GlobalConstraintPage> {
                                 ? Icons.edit
                                 : Icons.add),
                             label: Text(_constraint != null
-                                ? 'Bearbeiten'
-                                : 'Globale Einschränkung erstellen'),
+                                ? l10n.commonEdit
+                                : l10n.globalConstraintsCreate),
                           ),
                         ],
                       ),

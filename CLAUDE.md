@@ -87,6 +87,10 @@ Each play session records a `PlayEvent` with:
 
 **Storage layout (data-model decision):** play stats are stored as a single replicated `playlog-<deviceUuid>` document per device, structured by `itemId`. Events older than 31 days are aggregated into `playlog_archive-<deviceUuid>` (per-item monthly buckets) so the live playlog never grows unbounded. Both documents are consumed by the companion for statistics.
 
+**Audiobook resume positions** use the same per-device pattern: a replicated `playposition-<deviceUuid>` document keyed by `itemId`, with each entry carrying the item `title` plus either a resume `position` (track + seconds) or a `done` marker. Replicated (not `_local/...`) so the companion can purge entries when items are deleted (see Catalog deletion below) and so positions survive a reinstall via replication. The player is the only writer.
+
+**Catalog deletion (companion-only contract):** when the companion deletes media items, it must remove any matching entries from every `playposition-<deviceUuid>` document immediately. Additionally, the companion's startup `repairDatabase` sweep drops orphaned entries from `playlog-<uuid>` and `playposition-<uuid>` (catches out-of-band deletions, e.g. via Fauxton, and races where the immediate purge didn't reach a device). `playlog_archive-<uuid>` is intentionally *not* swept: archive items carry their own preserved `title` and represent the long-term listening record, which should remain meaningful after the original item is gone. The live PlayLog/PlayLogItem `title` field primarily survives renames in flight.
+
 ### Constraint Enforcement (contracts)
 
 Enforcement happens at three levels — all are required behavior the player implements:

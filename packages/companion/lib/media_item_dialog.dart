@@ -60,22 +60,25 @@ class _MediaItemDialogState extends State<MediaItemDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     return AlertDialog(
       title: Text(
-        widget.item == null ? 'Create Media Item' : 'Edit Media Item',
+        widget.item == null
+            ? l10n.itemDialogCreateTitle
+            : l10n.itemDialogEditTitle,
       ),
       content: TextField(
         controller: _controller,
         autofocus: true,
-        decoration: const InputDecoration(labelText: 'Item name'),
+        decoration: InputDecoration(labelText: l10n.itemDialogNameLabel),
         onSubmitted: (_) => _submit(),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(l10n.commonCancel),
         ),
-        ElevatedButton(onPressed: _submit, child: const Text('Save')),
+        ElevatedButton(onPressed: _submit, child: Text(l10n.commonSave)),
       ],
     );
   }

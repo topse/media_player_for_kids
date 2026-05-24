@@ -1,0 +1,561 @@
+{
+  "@@locale": "en",
+
+  "constraintAnd": " and ",
+  "@constraintAnd": { "description": "Separator used when joining AND-combined constraint descriptions." },
+
+  "constraintOr": " or ",
+  "@constraintOr": { "description": "Separator used when joining OR-combined constraint descriptions." },
+
+  "constraintNotPrefix": "Not: {desc}",
+  "@constraintNotPrefix": {
+    "description": "Prefix for NOT-inverted constraint descriptions.",
+    "placeholders": { "desc": { "type": "String" } }
+  },
+
+  "constraintPlayCountOnce": "Once {window}",
+  "@constraintPlayCountOnce": {
+    "description": "PlayCountConstraint with maxCount == 1, e.g. 'Once per day'.",
+    "placeholders": { "window": { "type": "String", "example": "per day" } }
+  },
+
+  "constraintPlayCountTimes": "At most {count}× {window}",
+  "@constraintPlayCountTimes": {
+    "description": "PlayCountConstraint with maxCount > 1.",
+    "placeholders": {
+      "count": { "type": "int" },
+      "window": { "type": "String", "example": "per day" }
+    }
+  },
+
+  "constraintPlayDuration": "Max. {minutes} min {window}",
+  "@constraintPlayDuration": {
+    "description": "PlayDurationConstraint description.",
+    "placeholders": {
+      "minutes": { "type": "int" },
+      "window": { "type": "String", "example": "per week" }
+    }
+  },
+
+  "constraintFolderItemCount": "Max. {count} different entries {window}",
+  "@constraintFolderItemCount": {
+    "description": "FolderItemCountConstraint description.",
+    "placeholders": {
+      "count": { "type": "int" },
+      "window": { "type": "String", "example": "per day" }
+    }
+  },
+
+  "constraintTimeOfDayOnly": "Only {from}–{to}",
+  "@constraintTimeOfDayOnly": {
+    "description": "TimeOfDayConstraint description, e.g. 'Only 08:00–20:00'.",
+    "placeholders": {
+      "from": { "type": "String", "example": "08:00" },
+      "to": { "type": "String", "example": "20:00" }
+    }
+  },
+
+  "constraintDayOfWeekWeekdaysOnly": "Only Mon–Fri",
+  "@constraintDayOfWeekWeekdaysOnly": { "description": "Shorthand DayOfWeek when all five weekdays are allowed." },
+
+  "constraintDayOfWeekWeekendOnly": "Only on the weekend",
+  "@constraintDayOfWeekWeekendOnly": { "description": "Shorthand DayOfWeek when only Sat+Sun are allowed." },
+
+  "constraintDayOfWeekList": "Only {days}",
+  "@constraintDayOfWeekList": {
+    "description": "DayOfWeek with arbitrary list, e.g. 'Only Mon, Wed, Fri'.",
+    "placeholders": { "days": { "type": "String", "example": "Mon, Wed, Fri" } }
+  },
+
+  "dayAbbrMon": "Mon",
+  "dayAbbrTue": "Tue",
+  "dayAbbrWed": "Wed",
+  "dayAbbrThu": "Thu",
+  "dayAbbrFri": "Fri",
+  "dayAbbrSat": "Sat",
+  "dayAbbrSun": "Sun",
+
+  "constraintDateRangeFromTo": "{from} – {to}",
+  "@constraintDateRangeFromTo": {
+    "description": "DateRange with both endpoints.",
+    "placeholders": {
+      "from": { "type": "String" },
+      "to": { "type": "String" }
+    }
+  },
+
+  "constraintDateRangeFrom": "From {date}",
+  "@constraintDateRangeFrom": {
+    "placeholders": { "date": { "type": "String" } }
+  },
+
+  "constraintDateRangeTo": "Until {date}",
+  "@constraintDateRangeTo": {
+    "placeholders": { "date": { "type": "String" } }
+  },
+
+  "constraintUnknown": "Unknown restriction",
+
+  "windowPerDay": "per day",
+  "windowPerWeek": "per week",
+  "windowPerMonth": "per month",
+  "windowSinceDate": "since {date}",
+  "@windowSinceDate": {
+    "placeholders": { "date": { "type": "String" } }
+  },
+  "windowRollingHours": "every {hours} hours",
+  "@windowRollingHours": {
+    "placeholders": { "hours": { "type": "int" } }
+  },
+
+  "reasonNoAccess": "No access",
+  "reasonLocked": "Locked",
+  "reasonMaxPlaysReached": "Reached max {count}× {window}",
+  "@reasonMaxPlaysReached": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "window": { "type": "String" }
+    }
+  },
+  "reasonOnePlayLeft": "1 play left",
+  "reasonTimeLimitReached": "Time limit reached (max {minutes} min {window})",
+  "@reasonTimeLimitReached": {
+    "placeholders": {
+      "minutes": { "type": "int" },
+      "window": { "type": "String" }
+    }
+  },
+  "reasonAlmostAtTimeLimit": "Almost at time limit",
+  "reasonMaxItemsStarted": "Max {count} entries {window} started",
+  "@reasonMaxItemsStarted": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "window": { "type": "String" }
+    }
+  },
+  "reasonOneItemLeft": "1 entry left",
+  "reasonOnlyAvailableHours": "Only available {from}–{to}",
+  "@reasonOnlyAvailableHours": {
+    "placeholders": {
+      "from": { "type": "String" },
+      "to": { "type": "String" }
+    }
+  },
+  "reasonNotAvailableToday": "Not available today",
+  "reasonAvailableFrom": "Available from {date}",
+  "@reasonAvailableFrom": {
+    "placeholders": { "date": { "type": "String" } }
+  },
+  "reasonNoLongerAvailable": "No longer available",
+
+  "commonCancel": "Cancel",
+  "commonOk": "OK",
+  "commonSave": "Save",
+  "commonDelete": "Delete",
+  "commonYes": "Yes",
+  "commonNo": "No",
+  "commonHidden": "Hidden",
+
+  "adminAccessRequired": "Admin access required",
+  "@adminAccessRequired": { "description": "Title of the password prompt that gates admin actions." },
+
+  "adminPassword": "Admin password",
+  "@adminPassword": { "description": "Text field label in the admin password prompt." },
+
+  "adminPasswordIncorrect": "Incorrect password",
+  "adminPasswordIncorrectCurrent": "Incorrect current password",
+  "adminPasswordVerify": "Verify",
+
+  "adminPasswordChangeTitle": "Change admin password",
+  "adminPasswordCurrent": "Current password",
+  "adminPasswordNew": "New password",
+  "adminPasswordConfirmNew": "Confirm new password",
+  "adminPasswordPleaseEnterNew": "Please enter a new password",
+  "adminPasswordTooShort": "Password must be at least 4 characters",
+  "adminPasswordsDoNotMatch": "Passwords do not match",
+  "adminPasswordChange": "Change password",
+  "adminPasswordChangedSnack": "Password changed successfully",
+
+  "adminPasswordSetTitle": "Set admin password",
+  "adminPasswordSetExplanation": "Please set an admin password for first-time setup.",
+  "adminPasswordPlain": "Password",
+  "adminPasswordPleaseEnter": "Please enter a password",
+  "adminPasswordConfirm": "Confirm password",
+  "adminPasswordSet": "Set password",
+
+  "adminSettingsTitle": "Admin settings",
+  "adminAudioOutputDevices": "Audio output devices",
+  "adminAudioOutputDevicesSubtitle": "Set volume limits per output device",
+
+  "adminGridColumnsPortrait": "Grid columns (portrait): {count}",
+  "@adminGridColumnsPortrait": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "adminGridColumnsLandscape": "Grid columns (landscape): {count}",
+  "@adminGridColumnsLandscape": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+
+  "adminHearingRulesSection": "Hearing rules",
+  "@adminHearingRulesSection": { "description": "Section header above the min-play / grace-period sliders on the admin settings page." },
+
+  "adminMinPlayDurationDescription": "Minimum duration before a play session is counted and an audiobook position is saved. Tracks shorter than this duration always count.",
+  "adminMinPlayDurationDisabled": "Minimum duration: disabled",
+  "adminMinPlayDuration": "Minimum duration: {seconds} s",
+  "@adminMinPlayDuration": {
+    "placeholders": { "seconds": { "type": "int" } }
+  },
+  "adminMinPlaySliderLabelOff": "off",
+  "adminMinPlaySliderLabel": "{seconds} s",
+  "@adminMinPlaySliderLabel": {
+    "placeholders": { "seconds": { "type": "int" } }
+  },
+
+  "adminGracePeriodDescription": "When listening time runs out and the track has less than this much left, the child may finish listening.",
+  "adminGracePeriod": "Grace period: {minutes} min",
+  "@adminGracePeriod": {
+    "placeholders": { "minutes": { "type": "int" } }
+  },
+  "adminGraceSliderLabel": "{minutes} min",
+  "@adminGraceSliderLabel": {
+    "placeholders": { "minutes": { "type": "int" } }
+  },
+
+  "adminVersionLoading": "Version …",
+  "adminVersion": "Version {version} (Build {build})",
+  "@adminVersion": {
+    "placeholders": {
+      "version": { "type": "String" },
+      "build": { "type": "String" }
+    }
+  },
+
+  "kidNameTitle": "Who's using this device?",
+  "kidNameLabel": "Your name",
+  "kidNamePleaseEnter": "Please enter your name",
+  "kidNameDone": "Done",
+
+  "playerAppTitle": "Media Player for Kids",
+  "playerMenuShowAdmin": "Show admin options",
+
+  "directoryHearingRulesDisabled": "Hearing rules disabled",
+  "directoryDateLocksDisabled": "Date locks disabled",
+  "directoryNoMediaItems": "No media items found",
+  "directoryItemUnavailable": "Not available right now",
+
+  "playerListeningTimeUp": "Listening time is up",
+
+  "audioDeviceNoneFound": "No audio devices found.",
+
+  "audioDeviceEmergencyTitle": "Emergency overrides",
+  "audioDeviceEmergencyHelper": "Only enable in an emergency. Please disable again after travel.",
+  "audioDeviceIgnoreConstraints": "Ignore hearing rules",
+  "audioDeviceIgnoreConstraintsSub": "All hearing restrictions are disabled",
+  "audioDeviceIgnoreDates": "Ignore date locks",
+  "audioDeviceIgnoreDatesSub": "Content with date windows (from/to) is visible",
+
+  "audioDeviceBluetoothBannerText": "Allow Bluetooth access to list all paired devices, even when they are turned off.",
+  "audioDeviceBluetoothBannerAllow": "Allow",
+
+  "audioDeviceStatusActive": "active",
+  "audioDeviceStatusAvailable": "available now",
+  "audioDeviceStatusPairedUnavailable": "paired, currently unavailable",
+  "audioDeviceStatusUnavailable": "currently unavailable",
+
+  "audioDeviceVolumeLimit": "Volume limit",
+  "audioDeviceNoLimit": "No limit",
+  "audioDeviceLimitedTo": "Audio limited to {db} dB below maximum",
+  "@audioDeviceLimitedTo": {
+    "placeholders": { "db": { "type": "String", "example": "-12.0" } }
+  },
+
+  "audioDeviceUnavailablePairedHelper": "This output is known to Android but is not currently routeable. Volume limit will apply when it becomes available.",
+  "audioDeviceUnavailableTypeHelper": "This output type is not currently routeable, but its settings are still saved.",
+
+  "audioDevicePairedBluetoothTitle": "Paired Bluetooth devices",
+  "audioDevicePairedBluetoothHelper": "Allow Bluetooth access to show headphones and speakers that are paired with Android, even when they are currently off.",
+  "audioDevicePairedBluetoothAllow": "Allow Bluetooth Access",
+
+  "audioDeviceBluetoothTitle": "Bluetooth device",
+  "audioDeviceBluetoothNoneYet": "No specific paired Bluetooth device is known yet. Once Android reports a paired headset, it will get its own entry here.",
+
+  "commonEdit": "Edit",
+  "commonDuplicate": "Duplicate",
+  "commonLogin": "Login",
+  "commonImport": "Import",
+  "commonRemove": "Remove",
+  "commonItem": "item",
+  "commonItemCapitalized": "Item",
+  "commonFolder": "folder",
+  "commonFolderCapitalized": "Folder",
+  "commonMediaItem": "Media item",
+  "commonNotSet": "Not set",
+  "commonFrom": "From",
+  "commonUntil": "Until",
+  "commonHours": "Hours",
+
+  "companionAppTitle": "Media Player for Kids Companion",
+  "companionGlobalConstraintsMenu": "Global restrictions",
+  "companionLogoutMenu": "Log out",
+  "companionDeleteTitle": "Delete?",
+  "companionDeleteOneConfirm": "Really delete {kind} \"{name}\"?",
+  "@companionDeleteOneConfirm": {
+    "placeholders": {
+      "kind": { "type": "String" },
+      "name": { "type": "String" }
+    }
+  },
+  "companionDeleteManyConfirm": "Really delete {kind} \"{name}\" and its {count} child(ren)?",
+  "@companionDeleteManyConfirm": {
+    "placeholders": {
+      "kind": { "type": "String" },
+      "name": { "type": "String" },
+      "count": { "type": "int" }
+    }
+  },
+  "companionCreateNewTitle": "Create new",
+
+  "globalConstraintsHeading": "Global hearing rules",
+  "globalConstraintsDescription": "Limits total daily/weekly listening time across all content. Evaluated in combination with per-item restrictions — the stricter rule wins.",
+  "globalConstraintsRemoveTooltip": "Remove restriction",
+  "globalConstraintsCreate": "Create global restriction",
+
+  "editorTitle": "Edit hearing rules",
+  "editorReset": "Reset",
+  "editorApply": "Apply",
+  "editorInheritedBanner": "This item inherits hearing rules from \"{from}\". You can take them over as its own rules and adjust them.",
+  "@editorInheritedBanner": {
+    "placeholders": { "from": { "type": "String" } }
+  },
+  "editorAdoptRules": "Adopt rules",
+  "editorPaneTitle": "Rule editor",
+  "editorCollapseAll": "Collapse all",
+  "editorExpandAll": "Expand all",
+  "editorNoConstraint": "No restriction — freely playable.",
+  "editorCombineLabel": "Combine:",
+  "editorCombineAnd": "AND (all apply)",
+  "editorCombineOr": "OR (any applies)",
+  "editorPresetsTitle": "Building blocks",
+  "editorPresetsHint": "Drag & drop into the editor",
+  "editorTypeLabel": "Type",
+  "editorAddCondition": "Add condition",
+  "editorAddConditionTooltip": "Add a condition or drag here",
+  "editorTimeWindowLabel": "Time window",
+  "editorWindowPerDay": "Per day",
+  "editorWindowPerWeek": "Per week",
+  "editorWindowPerMonth": "Per month",
+  "editorWindowSinceDate": "Since date",
+  "editorWindowRollingHours": "Last N hours",
+  "editorLeafMaximum": "Maximum",
+  "editorLeafMaxMinutes": "Max. minutes",
+  "editorLeafMaxItems": "Max. entries",
+  "editorTypeAnd": "AND (all must apply)",
+  "editorTypeOr": "OR (at least one)",
+  "editorTypeNot": "NOT (inversion)",
+  "editorTypePlayCount": "Play count",
+  "editorTypePlayDuration": "Listening time",
+  "editorTypeFolderItemCount": "Different folder entries",
+  "editorTypeTimeOfDay": "Time of day",
+  "editorTypeDayOfWeek": "Day of week",
+  "editorTypeDateRange": "Date range",
+  "editorPickDateTooltip": "Pick date",
+
+  "presetThreeTimesPerDay": "Three times a day",
+  "presetOnceAWeek": "Once a week",
+  "presetDaytimeOnly": "Daytime only (8 am – 8 pm)",
+  "presetWeekdaysOnly": "Weekdays only",
+  "presetWeekdaysAndDaytime": "Weekdays & daytime",
+  "presetWeekendOnly": "Weekends only",
+  "presetMax30MinPerWeek": "Max. 30 min per week",
+  "preset2xMonFri3xSatSun": "2× Mon–Fri, 3× Sat+Sun",
+  "preset2hMonFri3hSatSun": "2h Mon–Fri, 3h Sat+Sun",
+  "presetMax2DifferentItems": "Max. 2 different items",
+
+  "headerVisibleDateRange": "Visible date range:",
+  "headerFromDate": "From date:",
+  "headerToDate": "To date:",
+  "headerHearingRules": "Hearing rules",
+  "headerInheritedFrom": "inherited from \"{name}\"",
+  "@headerInheritedFrom": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "headerRemoveRulesTooltip": "Remove hearing rules",
+  "headerHiddenLabel": "Hidden",
+  "headerRemoveImage": "Remove image",
+  "headerPasteImage": "Paste image from clipboard",
+  "headerClipboardUnavailable": "Clipboard not available",
+  "headerClipboardEmpty": "No data in clipboard",
+  "headerClipboardUnsupported": "No supported image format in clipboard",
+  "headerClipboardError": "Error reading clipboard: {error}",
+  "@headerClipboardError": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "headerChildrenCount": "{count} children",
+  "@headerChildrenCount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "headerNotSetPlaceholder": "*Not set*",
+  "headerNoRules": "No restrictions",
+
+  "folderDetailAudioBook": "Audio book",
+  "folderDetailIsNew": "New",
+  "folderDetailHidden": "Hidden",
+  "folderDetailShowChildNumbering": "Show child numbering in player directory view",
+  "folderDialogCreateTitle": "Create folder",
+  "folderDialogEditTitle": "Edit folder",
+  "folderDialogNameLabel": "Folder name",
+  "itemDialogNameLabel": "Item name",
+  "itemDialogCreateTitle": "Create media item",
+  "itemDialogEditTitle": "Edit media item",
+  "itemDetailDeleteFileTitle": "Delete media file?",
+  "itemDetailDeleteFileConfirm": "Remove {name} from this item?",
+  "@itemDetailDeleteFileConfirm": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "itemDetailNoFilesFound": "No audio files found in folder",
+  "itemDetailImportTitle": "Import audio files?",
+  "itemDetailImportConfirm": "Import all {count} audio files from \"{folder}\"?",
+  "@itemDetailImportConfirm": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "folder": { "type": "String" }
+    }
+  },
+  "itemDetailFoldersCount": "{count} folders",
+  "@itemDetailFoldersCount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "itemDetailAddedSnack": "Successfully added {count} file(s)",
+  "@itemDetailAddedSnack": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "itemDetailNoFilesAdded": "No files were added",
+  "itemDetailErrorPlaying": "Error playing audio: {error}",
+  "@itemDetailErrorPlaying": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "itemDetailErrorTrackNotFound": "Error: track document not found",
+  "itemDetailFileRemoved": "Media file removed",
+  "itemDetailErrorRemovingFile": "Error removing file: {error}",
+  "@itemDetailErrorRemovingFile": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "itemDetailShuffle": "Shuffle",
+  "itemDetailRepeat": "Repeat",
+  "itemDetailNewFlag": "New",
+  "itemDetailUseTrackCovers": "Use track covers in player rather than item cover",
+
+  "folderDetailNameForNewItem": "Name for new media item",
+  "folderDetailEditName": "Edit name",
+  "folderDetailDeletedSnack": "Deleted \"{name}\"",
+  "@folderDetailDeletedSnack": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "folderDetailDeleteErrorSnack": "Error deleting: {error}",
+  "@folderDetailDeleteErrorSnack": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "folderDetailNoAudioFilesFound": "No audio files found",
+  "folderDetailErrorCreatingItem": "Error creating media item",
+  "folderDetailDeleteWithContents": "This will also delete all its contents.",
+  "folderDetailNoValidAudioImported": "No valid audio files were imported",
+  "folderDetailImportedItems": "Imported {count} item(s)",
+  "@folderDetailImportedItems": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "folderDetailImportedFolders": "Imported {count} folder(s) as media items",
+  "@folderDetailImportedFolders": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+
+  "importDialogTitleFiles": "Import {count} audio files",
+  "@importDialogTitleFiles": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "importDialogSingleItemTitle": "Import all into a single media item",
+  "importDialogSingleItemSubtitle": "All files go into one item",
+  "importDialogPerFileTitle": "Each file as a separate media item",
+  "importDialogPerFileSubtitle": "One item per file",
+  "importDialogSingleFileTitle": "Import audio file",
+  "importDialogSingleFileAsItemTitle": "Import as a media item",
+  "importDialogFoldersTitle": "Import {folders} folders ({files} audio files)",
+  "@importDialogFoldersTitle": {
+    "placeholders": {
+      "folders": { "type": "int" },
+      "files": { "type": "int" }
+    }
+  },
+  "importDialogPerFolderTitle": "Each folder as a separate media item",
+  "importDialogPerFolderSubtitle": "One item per folder, containing all its files",
+  "importDialogAllOneItemSubtitle": "All files go into one item",
+  "importDialogEachFileTitle": "Each file as a separate media item",
+  "importDialogEachFileSubtitle": "One item per audio file",
+
+  "audioImportCompressTitle": "Compress audio files?",
+  "audioImportKeepOriginals": "No, keep originals",
+  "audioImportCompress": "Yes, compress",
+  "audioImportInProgressTitle": "Importing files",
+  "audioImportProgressLine": "Imported {count} file(s)",
+  "@audioImportProgressLine": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "audioImportUnsupported": "Unsupported file type: {filename}",
+  "@audioImportUnsupported": {
+    "placeholders": { "filename": { "type": "String" } }
+  },
+  "audioImportErrorAdding": "Error adding file: {error}",
+  "@audioImportErrorAdding": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+
+  "loginEditTooltip": "Edit",
+  "loginDuplicateTooltip": "Duplicate",
+  "loginDeleteTooltip": "Delete",
+  "loginLoginTooltip": "Login",
+  "loginServerUrlLabel": "Server URL",
+  "loginServerUrlHint": "example.com",
+  "loginUsernameLabel": "Username",
+  "loginPasswordLabel": "Password",
+  "loginEditProfileTitle": "Edit profile",
+  "loginNewProfileTitle": "New profile",
+  "loginPleaseEnterServerUrl": "Please enter a server URL",
+  "loginPleaseEnterUsername": "Please enter a username",
+  "loginPleaseEnterPassword": "Please enter a password",
+
+  "audioImportTotalProgress": "{percent}%",
+  "@audioImportTotalProgress": {
+    "placeholders": { "percent": { "type": "int" } }
+  },
+  "audioImportFileCount": "{count, plural, =1{1 file} other{{count} files}}",
+  "@audioImportFileCount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "audioImportCompressBody": "{fileText} not highly compressed. Compress to AAC (160 kbps stereo / 80 kbps mono)? Quality will be indistinguishable from CD. Original files will not be modified.",
+  "@audioImportCompressBody": {
+    "placeholders": { "fileText": { "type": "String" } }
+  },
+  "audioImportPreparing": "Preparing import…",
+  "audioImportProcessedLine": "Processed {done}/{total} files",
+  "@audioImportProcessedLine": {
+    "placeholders": {
+      "done": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "audioImportImportingFile": "Importing file\n{filename}",
+  "@audioImportImportingFile": {
+    "placeholders": { "filename": { "type": "String" } }
+  },
+  "audioImportSkippedFile": "Skipped unsupported file\n{filename}",
+  "@audioImportSkippedFile": {
+    "placeholders": { "filename": { "type": "String" } }
+  },
+  "audioImportCompressingFile": "Compressing file\n{filename}",
+  "@audioImportCompressingFile": {
+    "placeholders": { "filename": { "type": "String" } }
+  },
+  "audioImportFinishedFile": "Finished file\n{filename}",
+  "@audioImportFinishedFile": {
+    "placeholders": { "filename": { "type": "String" } }
+  }
+}

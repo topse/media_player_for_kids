@@ -123,7 +123,9 @@ class _MediaItemDetailState extends State<MediaItemDetail> {
       if (directoryFiles.isEmpty && regularFiles.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No audio files found in folder')),
+            SnackBar(
+                content:
+                    Text(SharedL10n.of(context).itemDetailNoFilesFound)),
           );
         }
         return;
@@ -131,25 +133,25 @@ class _MediaItemDetailState extends State<MediaItemDetail> {
 
       if (directoryFiles.isNotEmpty) {
         if (!mounted) return;
+        final l10n = SharedL10n.of(context);
         final count = directoryFiles.length;
         final folderName = directoryPaths.length == 1
             ? directoryPaths.first.split(RegExp(r'[/\\]')).last
-            : '${directoryPaths.length} folders';
+            : l10n.itemDetailFoldersCount(directoryPaths.length);
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Import audio files?'),
-            content: Text(
-              'Import all $count audio file${count == 1 ? '' : 's'} from "$folderName"?',
-            ),
+            title: Text(l10n.itemDetailImportTitle),
+            content:
+                Text(l10n.itemDetailImportConfirm(count, folderName)),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel'),
+                child: Text(l10n.commonCancel),
               ),
               ElevatedButton(
                 onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Import'),
+                child: Text(l10n.commonImport),
               ),
             ],
           ),
@@ -174,9 +176,10 @@ class _MediaItemDetailState extends State<MediaItemDetail> {
 
     if (result.attachments.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('No files were added')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(SharedL10n.of(context).itemDetailNoFilesAdded)),
+        );
       }
       return;
     }
@@ -199,9 +202,8 @@ class _MediaItemDetailState extends State<MediaItemDetail> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          'Successfully added ${result.attachments.length} file(s)',
-        ),
+        content: Text(SharedL10n.of(context)
+            .itemDetailAddedSnack(result.attachments.length)),
       ),
     );
   }
@@ -211,28 +213,31 @@ class _MediaItemDetailState extends State<MediaItemDetail> {
       await di<AudioPlayerService>().play(widget.item, mediaAttachment);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error playing audio: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                SharedL10n.of(context).itemDetailErrorPlaying(e.toString()))),
+      );
     }
   }
 
   Future<void> _deleteMediaFile(MediaAttachment mediaAttachment) async {
+    final l10n = SharedL10n.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete media file?'),
+        title: Text(l10n.itemDetailDeleteFileTitle),
         content: Text(
-          'Remove ${_getDisplayName(mediaAttachment)} from this item?',
+          l10n.itemDetailDeleteFileConfirm(_getDisplayName(mediaAttachment)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
+            child: Text(l10n.commonDelete),
           ),
         ],
       ),
@@ -247,7 +252,9 @@ class _MediaItemDetailState extends State<MediaItemDetail> {
         if (trackDoc == null) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Error: Track document not found')),
+            SnackBar(
+                content:
+                    Text(l10n.itemDetailErrorTrackNotFound)),
           );
           return;
         }
@@ -263,14 +270,16 @@ class _MediaItemDetailState extends State<MediaItemDetail> {
         await di<DartCouchDb>().put(widget.item.copyWith(media: _mediaList));
 
         if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Media file removed')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.itemDetailFileRemoved)),
+        );
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error removing file: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content:
+                  Text(l10n.itemDetailErrorRemovingFile(e.toString()))),
+        );
       }
     }
   }
@@ -321,7 +330,7 @@ class _MediaItemDetailState extends State<MediaItemDetail> {
                                   );
                                 },
                               ),
-                              const Text('Audio Book'),
+                              Text(SharedL10n.of(context).folderDetailAudioBook),
                             ],
                           ),
                           Row(
@@ -341,7 +350,7 @@ class _MediaItemDetailState extends State<MediaItemDetail> {
                                   );
                                 },
                               ),
-                              const Text('Shuffle'),
+                              Text(SharedL10n.of(context).itemDetailShuffle),
                             ],
                           ),
                           Row(
@@ -357,7 +366,7 @@ class _MediaItemDetailState extends State<MediaItemDetail> {
                                   );
                                 },
                               ),
-                              const Text('Repeat'),
+                              Text(SharedL10n.of(context).itemDetailRepeat),
                             ],
                           ),
                           Row(
@@ -376,8 +385,9 @@ class _MediaItemDetailState extends State<MediaItemDetail> {
                                   );
                                 },
                               ),
-                              const Text(
-                                'Use Track Covers in Player rather than Item Cover',
+                              Text(
+                                SharedL10n.of(context)
+                                    .itemDetailUseTrackCovers,
                               ),
                             ],
                           ),
@@ -392,7 +402,7 @@ class _MediaItemDetailState extends State<MediaItemDetail> {
                                   );
                                 },
                               ),
-                              const Text('New'),
+                              Text(SharedL10n.of(context).itemDetailNewFlag),
                             ],
                           ),
                         ],
@@ -437,15 +447,12 @@ class _MediaItemDetailState extends State<MediaItemDetail> {
                         Expanded(
                           child: ReorderableListView.builder(
                             itemCount: _mediaList.length,
-                            onReorder: (oldIndex, newIndex) async {
+                            onReorderItem: (oldIndex, newIndex) async {
                               final sw = Stopwatch()..start();
                               _log.fine(
                                 'onReorder start: $oldIndex -> $newIndex',
                               );
                               setState(() {
-                                if (newIndex > oldIndex) {
-                                  newIndex -= 1;
-                                }
                                 final item = _mediaList.removeAt(oldIndex);
                                 _mediaList.insert(newIndex, item);
                                 _reordering = true;

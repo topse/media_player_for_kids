@@ -1,12 +1,19 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared/constraints/constraint_evaluator.dart';
 import 'package:shared/constraints/hearing_constraint.dart';
 import 'package:shared/constraints/hearing_stats.dart';
+import 'package:shared/l10n/shared_l10n.dart';
 import 'package:shared/models/datatypes.dart';
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
 const _eval = ConstraintEvaluator();
+
+/// German [SharedL10n] used so legacy assertions on `humanReadableReason`
+/// keep matching their German fixtures. Populated by [setUpAll] in [main].
+late SharedL10n _loc;
 
 PlayEvent _event(String startedAt, {int durationMs = 0, double playCountFraction = 1.0}) =>
     PlayEvent(startedAt: startedAt, durationMs: durationMs, playCountFraction: playCountFraction);
@@ -28,6 +35,7 @@ EvaluationResult _run(
       allStats: allStats,
       folderChildIds: folderChildIds,
       now: now,
+      loc: _loc,
     );
 
 // Fixed reference times used across tests.
@@ -39,6 +47,11 @@ final _sunday = DateTime(2026, 3, 8, 10, 0);
 // ── PlayCountConstraint ───────────────────────────────────────────────────────
 
 void main() {
+  setUpAll(() async {
+    await initializeDateFormatting();
+    _loc = await SharedL10n.delegate.load(const Locale('de'));
+  });
+
   group('PlayCountConstraint', () {
     group('perDay', () {
       const c = PlayCountConstraint(
@@ -528,7 +541,7 @@ void main() {
     test('humanReadableReason contains formatted date', () {
       const c = DateRangeConstraint(fromDate: '2026-12-01');
       final result = _run(c, now: _monday);
-      expect(result.humanReadableReason, contains('01.12.2026'));
+      expect(result.humanReadableReason, contains('1.12.2026'));
     });
   });
 

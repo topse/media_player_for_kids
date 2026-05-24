@@ -3,6 +3,7 @@ import 'package:logging/logging.dart';
 import 'package:player/admin/admin_override_service.dart';
 import 'package:player/audio_device_service.dart';
 import 'package:player/audio_types.dart';
+import 'package:shared/shared.dart' show SharedL10n;
 import 'package:watch_it/watch_it.dart';
 
 final _log = Logger('audio_device_admin_page');
@@ -39,6 +40,7 @@ class _AudioDeviceAdminPageState extends State<AudioDeviceAdminPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     return ListenableBuilder(
       listenable: di<AudioDeviceService>(),
       builder: (context, _) {
@@ -46,7 +48,7 @@ class _AudioDeviceAdminPageState extends State<AudioDeviceAdminPage> {
         final entries = svc.adminVisibleDevices;
 
         return Scaffold(
-          appBar: AppBar(title: const Text('Audio Output Devices')),
+          appBar: AppBar(title: Text(l10n.adminAudioOutputDevices)),
           body: Column(
             children: [
               _EmergencyOverrideCard(),
@@ -56,9 +58,9 @@ class _AudioDeviceAdminPageState extends State<AudioDeviceAdminPage> {
                 ),
               Expanded(
                 child: entries.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Text(
-                          'No audio devices found.',
+                          l10n.audioDeviceNoneFound,
                           textAlign: TextAlign.center,
                         ),
                       )
@@ -97,6 +99,7 @@ class _AudioDeviceAdminPageState extends State<AudioDeviceAdminPage> {
 class _EmergencyOverrideCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     return ListenableBuilder(
       listenable: di<AdminOverrideService>(),
       builder: (context, _) {
@@ -117,30 +120,26 @@ class _EmergencyOverrideCard extends StatelessWidget {
                     const Icon(Icons.warning_amber, color: Colors.orange),
                     const SizedBox(width: 8),
                     Text(
-                      'Notfall-Ausnahmen',
+                      l10n.audioDeviceEmergencyTitle,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ]),
                   const SizedBox(height: 4),
-                  const Text(
-                    'Nur für den Notfall aktivieren. Bitte nach der Reise wieder deaktivieren.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  Text(
+                    l10n.audioDeviceEmergencyHelper,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                   CheckboxListTile(
-                    title: const Text('Hörregeln ignorieren'),
-                    subtitle: const Text(
-                      'Alle Hör-Einschränkungen sind deaktiviert',
-                    ),
+                    title: Text(l10n.audioDeviceIgnoreConstraints),
+                    subtitle: Text(l10n.audioDeviceIgnoreConstraintsSub),
                     value: overrides.ignoreConstraints,
                     onChanged: (v) =>
                         overrides.setIgnoreConstraints(v ?? false),
                     activeColor: Colors.orange,
                   ),
                   CheckboxListTile(
-                    title: const Text('Datumssperren ignorieren'),
-                    subtitle: const Text(
-                      'Inhalte mit Zeitfenstern (von/bis) sind sichtbar',
-                    ),
+                    title: Text(l10n.audioDeviceIgnoreDates),
+                    subtitle: Text(l10n.audioDeviceIgnoreDatesSub),
                     value: overrides.ignoreDateSettings,
                     onChanged: (v) =>
                         overrides.setIgnoreDateSettings(v ?? false),
@@ -168,6 +167,7 @@ class _BluetoothPermissionBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = SharedL10n.of(context);
     return Material(
       color: theme.colorScheme.secondaryContainer,
       child: Padding(
@@ -181,15 +181,17 @@ class _BluetoothPermissionBanner extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Allow Bluetooth access to list all paired devices, '
-                'even when they are turned off.',
+                l10n.audioDeviceBluetoothBannerText,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSecondaryContainer,
                 ),
               ),
             ),
             const SizedBox(width: 8),
-            TextButton(onPressed: onGrant, child: const Text('Allow')),
+            TextButton(
+              onPressed: onGrant,
+              child: Text(l10n.audioDeviceBluetoothBannerAllow),
+            ),
           ],
         ),
       ),
@@ -262,16 +264,17 @@ class _DeviceConfigCardState extends State<_DeviceConfigCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = SharedL10n.of(context);
     final subtitleParts = <String>[widget.entry.type.name];
     if (widget.entry.isCurrent) {
-      subtitleParts.add('active');
+      subtitleParts.add(l10n.audioDeviceStatusActive);
     }
     if (widget.entry.isAvailable) {
-      subtitleParts.add('available now');
+      subtitleParts.add(l10n.audioDeviceStatusAvailable);
     } else if (widget.entry.isBluetooth && widget.entry.address.isNotEmpty) {
-      subtitleParts.add('paired, currently unavailable');
+      subtitleParts.add(l10n.audioDeviceStatusPairedUnavailable);
     } else {
-      subtitleParts.add('currently unavailable');
+      subtitleParts.add(l10n.audioDeviceStatusUnavailable);
     }
 
     return ExpansionTile(
@@ -294,7 +297,7 @@ class _DeviceConfigCardState extends State<_DeviceConfigCard> {
             const Icon(Icons.circle, size: 8, color: Colors.green),
             const SizedBox(width: 4),
             Text(
-              'active',
+              l10n.audioDeviceStatusActive,
               style: theme.textTheme.bodySmall?.copyWith(color: Colors.green),
             ),
           ],
@@ -324,7 +327,7 @@ class _DeviceConfigCardState extends State<_DeviceConfigCard> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Volume limit',
+                      l10n.audioDeviceVolumeLimit,
                       style: theme.textTheme.labelLarge,
                     ),
                   ),
@@ -344,8 +347,9 @@ class _DeviceConfigCardState extends State<_DeviceConfigCard> {
               ),
               Text(
                 _draft.volumeLimitDb == 0.0
-                    ? 'No limit'
-                    : 'Audio limited to ${_draft.volumeLimitDb.toStringAsFixed(1)} dB below maximum',
+                    ? l10n.audioDeviceNoLimit
+                    : l10n.audioDeviceLimitedTo(
+                        _draft.volumeLimitDb.toStringAsFixed(1)),
                 style: theme.textTheme.bodySmall,
               ),
 
@@ -354,8 +358,8 @@ class _DeviceConfigCardState extends State<_DeviceConfigCard> {
                   padding: const EdgeInsets.only(top: 12),
                   child: Text(
                     widget.entry.isBluetooth && widget.entry.address.isNotEmpty
-                        ? 'This output is known to Android but is not currently routeable. Volume limit will apply when it becomes available.'
-                        : 'This output type is not currently routeable, but its settings are still saved.',
+                        ? l10n.audioDeviceUnavailablePairedHelper
+                        : l10n.audioDeviceUnavailableTypeHelper,
                     style: theme.textTheme.bodySmall,
                   ),
                 ),
@@ -383,15 +387,19 @@ class _BluetoothKnownDevicesSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = SharedL10n.of(context);
 
     if (permissionRequired) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Paired Bluetooth devices', style: theme.textTheme.labelLarge),
+          Text(
+            l10n.audioDevicePairedBluetoothTitle,
+            style: theme.textTheme.labelLarge,
+          ),
           const SizedBox(height: 8),
           Text(
-            'Allow Bluetooth access to show headphones and speakers that are paired with Android, even when they are currently off.',
+            l10n.audioDevicePairedBluetoothHelper,
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 8),
@@ -399,7 +407,7 @@ class _BluetoothKnownDevicesSection extends StatelessWidget {
             onPressed: () =>
                 di<AudioDeviceService>().requestBluetoothPermission(),
             icon: const Icon(Icons.bluetooth_audio),
-            label: const Text('Allow Bluetooth Access'),
+            label: Text(l10n.audioDevicePairedBluetoothAllow),
           ),
         ],
       );
@@ -408,11 +416,11 @@ class _BluetoothKnownDevicesSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Bluetooth device', style: theme.textTheme.labelLarge),
+        Text(l10n.audioDeviceBluetoothTitle, style: theme.textTheme.labelLarge),
         const SizedBox(height: 8),
         if (address.isEmpty)
           Text(
-            'No specific paired Bluetooth device is known yet. Once Android reports a paired headset, it will get its own entry here.',
+            l10n.audioDeviceBluetoothNoneYet,
             style: theme.textTheme.bodySmall,
           )
         else

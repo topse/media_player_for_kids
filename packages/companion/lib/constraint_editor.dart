@@ -372,6 +372,7 @@ class _ConstraintEditorPageState extends State<ConstraintEditorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     return _TreeScope(
       moveNodeInto: _moveNodeInto,
       moveNodeToRoot: _moveNodeToRoot,
@@ -381,10 +382,10 @@ class _ConstraintEditorPageState extends State<ConstraintEditorPage> {
       collapseState: _collapseState,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Hörregeln bearbeiten'),
+          title: Text(l10n.editorTitle),
           leading: IconButton(
             icon: const Icon(Icons.close),
-            tooltip: 'Abbrechen',
+            tooltip: l10n.commonCancel,
             onPressed: _cancel,
           ),
           actions: [
@@ -393,18 +394,18 @@ class _ConstraintEditorPageState extends State<ConstraintEditorPage> {
                 _constraint = const LogicalAndConstraint(nodes: []);
               }),
               icon: const Icon(Icons.delete_outline),
-              label: const Text('Zurücksetzen'),
+              label: Text(l10n.editorReset),
               style: TextButton.styleFrom(foregroundColor: Colors.red[700]),
             ),
             const SizedBox(width: 8),
             TextButton(
               onPressed: _cancel,
-              child: const Text('Abbrechen'),
+              child: Text(l10n.commonCancel),
             ),
             const SizedBox(width: 8),
             FilledButton(
               onPressed: _confirm,
-              child: const Text('Übernehmen'),
+              child: Text(l10n.editorApply),
             ),
             const SizedBox(width: 12),
           ],
@@ -415,14 +416,13 @@ class _ConstraintEditorPageState extends State<ConstraintEditorPage> {
             if (widget.inheritedConstraint != null && _isTreeEmpty)
               MaterialBanner(
                 content: Text(
-                  'Dieses Element erbt Hörregeln von „${widget.inheritedFromName}". '
-                  'Du kannst sie als eigene Regeln übernehmen und anpassen.',
+                  l10n.editorInheritedBanner(widget.inheritedFromName ?? ''),
                 ),
                 leading: const Icon(Icons.info_outline),
                 actions: [
                   TextButton.icon(
                     icon: const Icon(Icons.download),
-                    label: const Text('Regeln übernehmen'),
+                    label: Text(l10n.editorAdoptRules),
                     onPressed: () {
                       setState(() {
                         _constraint =
@@ -501,6 +501,7 @@ class _EditorPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     final children = _children;
 
     return DragTarget<Object>(
@@ -535,18 +536,18 @@ class _EditorPane extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text('Regel-Editor',
+                    Text(l10n.editorPaneTitle,
                         style: Theme.of(context).textTheme.titleMedium),
                     const Spacer(),
                     if (children.isNotEmpty) ...[
                       IconButton(
                         icon: const Icon(Icons.unfold_less, size: 20),
-                        tooltip: 'Alle einklappen',
+                        tooltip: l10n.editorCollapseAll,
                         onPressed: onCollapseAll,
                       ),
                       IconButton(
                         icon: const Icon(Icons.unfold_more, size: 20),
-                        tooltip: 'Alle ausklappen',
+                        tooltip: l10n.editorExpandAll,
                         onPressed: onExpandAll,
                       ),
                     ],
@@ -559,14 +560,14 @@ class _EditorPane extends StatelessWidget {
                 if (children.isEmpty) ...[
                   Card(
                     color: Colors.green[50],
-                    child: const Padding(
-                      padding: EdgeInsets.all(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
                       child: Row(
                         children: [
-                          Icon(Icons.check_circle_outline,
+                          const Icon(Icons.check_circle_outline,
                               color: Colors.green, size: 20),
-                          SizedBox(width: 8),
-                          Text('Keine Einschränkung — frei abspielbar.'),
+                          const SizedBox(width: 8),
+                          Text(l10n.editorNoConstraint),
                         ],
                       ),
                     ),
@@ -615,8 +616,9 @@ class _EditorPane extends StatelessWidget {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                const ConstraintDescriptionGenerator()
-                                    .describe(desc),
+                                ConstraintDescriptionGenerator(
+                                  SharedL10n.of(context),
+                                ).describe(desc),
                                 style: const TextStyle(fontSize: 12),
                               ),
                             ),
@@ -647,15 +649,16 @@ class _RootModeToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     return Row(
       children: [
-        Text('Verknüpfung:',
+        Text(l10n.editorCombineLabel,
             style: TextStyle(fontSize: 13, color: Colors.grey[700])),
         const SizedBox(width: 8),
         SegmentedButton<bool>(
-          segments: const [
-            ButtonSegment(value: true, label: Text('UND (alle gelten)')),
-            ButtonSegment(value: false, label: Text('ODER (eins genügt)')),
+          segments: [
+            ButtonSegment(value: true, label: Text(l10n.editorCombineAnd)),
+            ButtonSegment(value: false, label: Text(l10n.editorCombineOr)),
           ],
           selected: {isAnd},
           onSelectionChanged: (_) => onToggle(),
@@ -677,7 +680,8 @@ class _PresetPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final templates = kConstraintTemplates
+    final l10n = SharedL10n.of(context);
+    final templates = constraintTemplates(l10n)
         .where((t) => !t.folderOnly || isFolder)
         .toList();
 
@@ -686,13 +690,13 @@ class _PresetPane extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-          child: Text('Bausteine',
+          child: Text(l10n.editorPresetsTitle,
               style: Theme.of(context).textTheme.titleMedium),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Text(
-            'Per Drag & Drop in den Editor ziehen',
+            l10n.editorPresetsHint,
             style: TextStyle(fontSize: 12, color: Colors.grey[600]),
           ),
         ),
@@ -705,7 +709,7 @@ class _PresetPane extends StatelessWidget {
                       child: _PresetCard(
                         emoji: tpl.emoji,
                         label: tpl.label,
-                        description: tpl.description,
+                        description: tpl.description(l10n),
                         constraint: tpl.constraint,
                       ),
                     ))
@@ -802,18 +806,19 @@ class _PresetCard extends StatelessWidget {
 // Recursive constraint node editor
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Available constraint type keys for the dropdown.
-const _kConstraintTypes = <String, String>{
-  'and': 'UND (alle müssen gelten)',
-  'or': 'ODER (mindestens eins)',
-  'not': 'NICHT (Umkehrung)',
-  'play_count': 'Abspielhäufigkeit',
-  'play_duration': 'Hördauer',
-  'folder_item_count': 'Verschiedene Einträge im Ordner',
-  'time_of_day': 'Tageszeit',
-  'day_of_week': 'Wochentag',
-  'date_range': 'Zeitraum',
-};
+/// Localized constraint-type labels for the dropdown, in insertion order
+/// (which determines dropdown order).
+Map<String, String> _constraintTypeLabels(SharedL10n loc) => <String, String>{
+      'and': loc.editorTypeAnd,
+      'or': loc.editorTypeOr,
+      'not': loc.editorTypeNot,
+      'play_count': loc.editorTypePlayCount,
+      'play_duration': loc.editorTypePlayDuration,
+      'folder_item_count': loc.editorTypeFolderItemCount,
+      'time_of_day': loc.editorTypeTimeOfDay,
+      'day_of_week': loc.editorTypeDayOfWeek,
+      'date_range': loc.editorTypeDateRange,
+    };
 
 String _typeKeyOf(HearingConstraint c) {
   if (c is LogicalAndConstraint) return 'and';
@@ -912,8 +917,9 @@ class _ConstraintNodeEditorState extends State<_ConstraintNodeEditor> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     final typeKey = _typeKeyOf(widget.constraint);
-    final availableTypes = Map.of(_kConstraintTypes);
+    final availableTypes = _constraintTypeLabels(l10n);
     if (!widget.isFolder) availableTypes.remove('folder_item_count');
 
     // The core node card
@@ -944,12 +950,12 @@ class _ConstraintNodeEditorState extends State<_ConstraintNodeEditor> {
               Expanded(
                 child: DropdownButtonFormField<String>(
                   initialValue: typeKey,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     isDense: true,
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    border: OutlineInputBorder(),
-                    labelText: 'Typ',
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 8),
+                    border: const OutlineInputBorder(),
+                    labelText: l10n.editorTypeLabel,
                   ),
                   items: availableTypes.entries
                       .map((e) => DropdownMenuItem(
@@ -966,7 +972,7 @@ class _ConstraintNodeEditorState extends State<_ConstraintNodeEditor> {
               IconButton(
                 icon: const Icon(Icons.delete_outline, size: 20),
                 color: Colors.red[700],
-                tooltip: 'Entfernen',
+                tooltip: l10n.commonRemove,
                 onPressed: widget.onRemove,
               ),
             ],
@@ -1026,7 +1032,7 @@ class _ConstraintNodeEditorState extends State<_ConstraintNodeEditor> {
     // Wrap everything in a Draggable via the drag handle row
     return _DraggableNode(
       data: _DragNodeData(widget.constraint, widget.path),
-      typeLabel: _kConstraintTypes[typeKey] ?? typeKey,
+      typeLabel: availableTypes[typeKey] ?? typeKey,
       child: nodeCard,
     );
   }
@@ -1241,12 +1247,13 @@ class _AddNodeDropZone extends StatelessWidget {
         }
       },
       builder: (context, candidateData, rejectedData) {
+        final l10n = SharedL10n.of(context);
         final isHovering = candidateData.isNotEmpty;
         return PopupMenuButton<String>(
-          tooltip: 'Bedingung hinzufügen oder hierher ziehen',
+          tooltip: l10n.editorAddConditionTooltip,
           onSelected: (typeKey) => onSelected(_defaultForType(typeKey)),
           itemBuilder: (ctx) {
-            final types = Map.of(_kConstraintTypes);
+            final types = _constraintTypeLabels(l10n);
             if (!isFolder) types.remove('folder_item_count');
             return types.entries
                 .map(
@@ -1273,7 +1280,7 @@ class _AddNodeDropZone extends StatelessWidget {
                     color: isHovering ? Colors.blue : Colors.blue[700]),
                 const SizedBox(width: 6),
                 Text(
-                  'Bedingung hinzufügen',
+                  l10n.editorAddCondition,
                   style: TextStyle(
                     color: isHovering ? Colors.blue : Colors.blue[700],
                     fontSize: 13,
@@ -1300,29 +1307,35 @@ class _TimeWindowEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         DropdownButtonFormField<TimeWindowType>(
           initialValue: window.type,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             isDense: true,
-            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            border: OutlineInputBorder(),
-            labelText: 'Zeitfenster',
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            border: const OutlineInputBorder(),
+            labelText: l10n.editorTimeWindowLabel,
           ),
-          items: const [
+          items: [
             DropdownMenuItem(
-                value: TimeWindowType.perDay, child: Text('Pro Tag')),
+                value: TimeWindowType.perDay,
+                child: Text(l10n.editorWindowPerDay)),
             DropdownMenuItem(
-                value: TimeWindowType.perWeek, child: Text('Pro Woche')),
+                value: TimeWindowType.perWeek,
+                child: Text(l10n.editorWindowPerWeek)),
             DropdownMenuItem(
-                value: TimeWindowType.perMonth, child: Text('Pro Monat')),
+                value: TimeWindowType.perMonth,
+                child: Text(l10n.editorWindowPerMonth)),
             DropdownMenuItem(
-                value: TimeWindowType.sinceDate, child: Text('Seit Datum')),
+                value: TimeWindowType.sinceDate,
+                child: Text(l10n.editorWindowSinceDate)),
             DropdownMenuItem(
                 value: TimeWindowType.rollingHours,
-                child: Text('Letzte N Stunden')),
+                child: Text(l10n.editorWindowRollingHours)),
           ],
           onChanged: (type) {
             if (type == null) return;
@@ -1343,7 +1356,7 @@ class _TimeWindowEditor extends StatelessWidget {
         if (window.type == TimeWindowType.sinceDate) ...[
           const SizedBox(height: 8),
           _DateField(
-            label: 'Seit',
+            label: l10n.commonFrom,
             value: window.sinceDate,
             onChanged: (d) =>
                 onChanged(TimeWindow(type: window.type, sinceDate: d)),
@@ -1352,7 +1365,7 @@ class _TimeWindowEditor extends StatelessWidget {
         if (window.type == TimeWindowType.rollingHours) ...[
           const SizedBox(height: 8),
           _IntField(
-            label: 'Stunden',
+            label: l10n.commonHours,
             value: window.rollingHours ?? 24,
             min: 1,
             max: 744,
@@ -1373,10 +1386,11 @@ class _PlayCountEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     return Column(
       children: [
         _IntField(
-          label: 'Maximal',
+          label: l10n.editorLeafMaximum,
           value: constraint.maxCount,
           min: 1,
           max: 999,
@@ -1407,10 +1421,11 @@ class _PlayDurationEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     return Column(
       children: [
         _IntField(
-          label: 'Max. Minuten',
+          label: l10n.editorLeafMaxMinutes,
           value: constraint.maxMinutes,
           min: 1,
           max: 9999,
@@ -1441,10 +1456,11 @@ class _FolderItemCountEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     return Column(
       children: [
         _IntField(
-          label: 'Max. Einträge',
+          label: l10n.editorLeafMaxItems,
           value: constraint.maxItems,
           min: 1,
           max: 999,
@@ -1474,11 +1490,12 @@ class _TimeOfDayEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     return Row(
       children: [
         Expanded(
           child: _TimeField(
-            label: 'Von',
+            label: l10n.commonFrom,
             value: constraint.fromTime,
             onChanged: (v) => onChanged(TimeOfDayConstraint(
               fromTime: v,
@@ -1489,7 +1506,7 @@ class _TimeOfDayEditor extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: _TimeField(
-            label: 'Bis',
+            label: l10n.commonUntil,
             value: constraint.toTime,
             onChanged: (v) => onChanged(TimeOfDayConstraint(
               fromTime: constraint.fromTime,
@@ -1508,17 +1525,25 @@ class _DayOfWeekEditor extends StatelessWidget {
 
   const _DayOfWeekEditor({required this.constraint, required this.onChanged});
 
-  static const _dayLabels = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
+    final dayLabels = [
+      l10n.dayAbbrMon,
+      l10n.dayAbbrTue,
+      l10n.dayAbbrWed,
+      l10n.dayAbbrThu,
+      l10n.dayAbbrFri,
+      l10n.dayAbbrSat,
+      l10n.dayAbbrSun,
+    ];
     return Wrap(
       spacing: 4,
       children: List.generate(7, (i) {
         final day = i + 1;
         final selected = constraint.allowedDays.contains(day);
         return FilterChip(
-          label: Text(_dayLabels[i]),
+          label: Text(dayLabels[i]),
           selected: selected,
           onSelected: (on) {
             final days = List<int>.of(constraint.allowedDays);
@@ -1544,11 +1569,12 @@ class _DateRangeEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     return Row(
       children: [
         Expanded(
           child: _DateField(
-            label: 'Von',
+            label: l10n.commonFrom,
             value: constraint.fromDate,
             onChanged: (v) => onChanged(DateRangeConstraint(
               fromDate: v,
@@ -1559,7 +1585,7 @@ class _DateRangeEditor extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: _DateField(
-            label: 'Bis',
+            label: l10n.commonUntil,
             value: constraint.toDate,
             onChanged: (v) => onChanged(DateRangeConstraint(
               fromDate: constraint.fromDate,
@@ -1710,6 +1736,7 @@ class _DateField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = SharedL10n.of(context);
     return Row(
       children: [
         Expanded(
@@ -1722,7 +1749,7 @@ class _DateField extends StatelessWidget {
               labelText: label,
             ),
             child: Text(
-              value != null ? _fmtDate(value!) : 'Nicht gesetzt',
+              value != null ? _fmtDate(value!) : l10n.commonNotSet,
               style: TextStyle(
                 color: value != null ? null : Colors.grey,
                 fontSize: 13,
@@ -1733,7 +1760,7 @@ class _DateField extends StatelessWidget {
         const SizedBox(width: 4),
         IconButton(
           icon: const Icon(Icons.calendar_today, size: 18),
-          tooltip: 'Datum wählen',
+          tooltip: l10n.editorPickDateTooltip,
           onPressed: () async {
             final initial = value != null
                 ? DateTime.tryParse(value!) ?? DateTime.now()
@@ -1752,7 +1779,7 @@ class _DateField extends StatelessWidget {
         if (value != null)
           IconButton(
             icon: const Icon(Icons.clear, size: 18),
-            tooltip: 'Entfernen',
+            tooltip: l10n.commonRemove,
             onPressed: () => onChanged(null),
           ),
       ],

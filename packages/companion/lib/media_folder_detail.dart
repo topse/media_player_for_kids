@@ -121,6 +121,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
 
       return StatefulBuilder(
         builder: (ctx, setDialogState) {
+          final l10n = SharedL10n.of(ctx);
           Future<void> pickFromDate() async {
             final picked = await showDatePicker(
               context: ctx,
@@ -174,7 +175,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                     onChanged: (value) {
                       setDialogState(() => isAudioBook = value ?? false);
                     },
-                    title: const Text('Audio Book'),
+                    title: Text(l10n.folderDetailAudioBook),
                     controlAffinity: ListTileControlAffinity.leading,
                   ),
                   CheckboxListTile(
@@ -183,7 +184,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                     onChanged: (value) {
                       setDialogState(() => isNew = value ?? true);
                     },
-                    title: const Text('Is New'),
+                    title: Text(l10n.folderDetailIsNew),
                     controlAffinity: ListTileControlAffinity.leading,
                   ),
                   CheckboxListTile(
@@ -192,13 +193,13 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                     onChanged: (value) {
                       setDialogState(() => hidden = value ?? false);
                     },
-                    title: const Text('Hidden'),
+                    title: Text(l10n.folderDetailHidden),
                     controlAffinity: ListTileControlAffinity.leading,
                   ),
                   const SizedBox(height: 8),
-                  const Align(
+                  Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('Visible Date Range:'),
+                    child: Text(l10n.headerVisibleDateRange),
                   ),
                   const SizedBox(height: 8),
                   Container(
@@ -211,14 +212,14 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const SizedBox(width: 16),
-                        const Text('From Date:'),
+                        Text(l10n.headerFromDate),
                         const SizedBox(width: 4),
                         TextButton(
                           onPressed: pickFromDate,
                           child: Text(
                             fromDate != null
                                 ? _formatDate(fromDate!)
-                                : '*Not set*',
+                                : l10n.headerNotSetPlaceholder,
                           ),
                         ),
                         IconButton(
@@ -241,12 +242,14 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const SizedBox(width: 16),
-                        const Text('To Date:'),
+                        Text(l10n.headerToDate),
                         const SizedBox(width: 4),
                         TextButton(
                           onPressed: pickToDate,
                           child: Text(
-                            toDate != null ? _formatDate(toDate!) : '*Not set*',
+                            toDate != null
+                                ? _formatDate(toDate!)
+                                : l10n.headerNotSetPlaceholder,
                           ),
                         ),
                         IconButton(
@@ -264,7 +267,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Cancel'),
+                child: Text(l10n.commonCancel),
               ),
             ],
           );
@@ -273,76 +276,85 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
     },
   );
 
-  Future<ImportModeSelection?> _showImportModeDialog(int fileCount) =>
-      _showImportOptionsDialog(
-        title: 'Import $fileCount audio files',
-        options: [
-          (
-            value: 'single',
-            icon: Icons.queue_music,
-            title: 'Import all into a Single Media Item',
-            subtitle: 'All files go into one item',
-          ),
-          (
-            value: 'each',
-            icon: Icons.audio_file,
-            title: 'Each as a Separate Media Item',
-            subtitle: 'One item per file',
-          ),
-        ],
-      );
+  Future<ImportModeSelection?> _showImportModeDialog(int fileCount) {
+    final l10n = SharedL10n.of(context);
+    return _showImportOptionsDialog(
+      title: l10n.importDialogTitleFiles(fileCount),
+      options: [
+        (
+          value: 'single',
+          icon: Icons.queue_music,
+          title: l10n.importDialogSingleItemTitle,
+          subtitle: l10n.importDialogSingleItemSubtitle,
+        ),
+        (
+          value: 'each',
+          icon: Icons.audio_file,
+          title: l10n.importDialogPerFileTitle,
+          subtitle: l10n.importDialogPerFileSubtitle,
+        ),
+      ],
+    );
+  }
 
   Future<ImportModeSelection?> _showSingleFileImportModeDialog(
     String fileName,
-  ) => _showImportOptionsDialog(
-    title: 'Import audio file',
-    options: [
-      (
-        value: 'single',
-        icon: Icons.audio_file,
-        title: 'Import as a Media Item',
-        subtitle: fileName,
-      ),
-    ],
-  );
+  ) {
+    final l10n = SharedL10n.of(context);
+    return _showImportOptionsDialog(
+      title: l10n.importDialogSingleFileTitle,
+      options: [
+        (
+          value: 'single',
+          icon: Icons.audio_file,
+          title: l10n.importDialogSingleFileAsItemTitle,
+          subtitle: fileName,
+        ),
+      ],
+    );
+  }
 
   Future<ImportModeSelection?> _showFolderImportModeDialog(
     int folderCount,
     int fileCount,
-  ) => _showImportOptionsDialog(
-    title: 'Import $folderCount folders ($fileCount audio files)',
-    options: [
-      (
-        value: 'each_folder',
-        icon: Icons.folder,
-        title: 'Each Folder as a Separate Media Item',
-        subtitle: 'One item per folder, containing all its files',
-      ),
-      (
-        value: 'single',
-        icon: Icons.queue_music,
-        title: 'Import all into a Single Media Item',
-        subtitle: 'All files go into one item',
-      ),
-      (
-        value: 'each',
-        icon: Icons.audio_file,
-        title: 'Each File as a Separate Media Item',
-        subtitle: 'One item per audio file',
-      ),
-    ],
-  );
+  ) {
+    final l10n = SharedL10n.of(context);
+    return _showImportOptionsDialog(
+      title: l10n.importDialogFoldersTitle(folderCount, fileCount),
+      options: [
+        (
+          value: 'each_folder',
+          icon: Icons.folder,
+          title: l10n.importDialogPerFolderTitle,
+          subtitle: l10n.importDialogPerFolderSubtitle,
+        ),
+        (
+          value: 'single',
+          icon: Icons.queue_music,
+          title: l10n.importDialogSingleItemTitle,
+          subtitle: l10n.importDialogAllOneItemSubtitle,
+        ),
+        (
+          value: 'each',
+          icon: Icons.audio_file,
+          title: l10n.importDialogEachFileTitle,
+          subtitle: l10n.importDialogEachFileSubtitle,
+        ),
+      ],
+    );
+  }
 
   Future<String?> _showNameDialog(String defaultName) => showDialog<String>(
     context: context,
     builder: (ctx) {
+      final l10n = SharedL10n.of(ctx);
       final ctrl = TextEditingController(text: defaultName);
       return AlertDialog(
-        title: const Text('Name for new media item'),
+        title: Text(l10n.folderDetailNameForNewItem),
         content: TextField(
           controller: ctrl,
           autofocus: true,
-          decoration: const InputDecoration(labelText: 'Item name'),
+          decoration: InputDecoration(labelText: l10n.itemDialogNameLabel),
           onSubmitted: (v) {
             if (v.trim().isNotEmpty) Navigator.of(ctx).pop(v.trim());
           },
@@ -350,14 +362,14 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           ElevatedButton(
             onPressed: () {
               final t = ctrl.text.trim();
               if (t.isNotEmpty) Navigator.of(ctx).pop(t);
             },
-            child: const Text('OK'),
+            child: Text(l10n.commonOk),
           ),
         ],
       );
@@ -367,9 +379,10 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
   Future<String?> _showEditNameDialog(String currentName) => showDialog<String>(
     context: context,
     builder: (ctx) {
+      final l10n = SharedL10n.of(ctx);
       final ctrl = TextEditingController(text: currentName);
       return AlertDialog(
-        title: const Text('Edit name'),
+        title: Text(l10n.folderDetailEditName),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -381,14 +394,14 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           ElevatedButton(
             onPressed: () {
               final t = ctrl.text.trim();
               if (t.isNotEmpty) Navigator.of(ctx).pop(t);
             },
-            child: const Text('OK'),
+            child: Text(l10n.commonOk),
           ),
         ],
       );
@@ -643,18 +656,23 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
   }
 
   Future<void> _confirmAndDelete(MediaBase doc) async {
+    final l10n = SharedL10n.of(context);
     final isFolder = doc is MediaFolder;
-    final label = isFolder ? 'folder' : 'item';
-    final extra = isFolder ? ' This will also delete all its contents.' : '';
+    final kind = isFolder ? l10n.commonFolder : l10n.commonItem;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Delete $label?'),
-        content: Text('Really delete $label "${doc.name}"?$extra'),
+        title: Text(l10n.companionDeleteTitle),
+        content: Text(
+          isFolder
+              ? '${l10n.companionDeleteOneConfirm(kind, doc.name)} '
+                  '${l10n.folderDetailDeleteWithContents}'
+              : l10n.companionDeleteOneConfirm(kind, doc.name),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -662,7 +680,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
               foregroundColor: Theme.of(ctx).colorScheme.onError,
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
+            child: Text(l10n.commonDelete),
           ),
         ],
       ),
@@ -672,15 +690,18 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
     try {
       await _deleteNodeRecursive(di<DartCouchDb>(), doc);
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Deleted "${doc.name}"')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(l10n.folderDetailDeletedSnack(doc.name))),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error deleting: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content:
+                  Text(l10n.folderDetailDeleteErrorSnack(e.toString()))),
+        );
       }
     }
   }
@@ -760,7 +781,8 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('No audio files found')));
+        ).showSnackBar(SnackBar(
+            content: Text(SharedL10n.of(context).folderDetailNoAudioFilesFound)));
       }
       return;
     }
@@ -883,7 +905,8 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
     final newRev = postResult.rev;
     if (newId == null || newRev == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error creating media item')),
+        SnackBar(
+            content: Text(SharedL10n.of(context).folderDetailErrorCreatingItem)),
       );
       return;
     }
@@ -898,7 +921,9 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
 
     if (result.attachments.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No valid audio files were imported')),
+        SnackBar(
+            content: Text(
+                SharedL10n.of(context).folderDetailNoValidAudioImported)),
       );
       return;
     }
@@ -1000,7 +1025,9 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text('Imported $successCount item(s)')));
+    ).showSnackBar(SnackBar(
+        content: Text(
+            SharedL10n.of(context).folderDetailImportedItems(successCount))));
   }
 
   Future<void> _importFoldersAsItems(
@@ -1076,7 +1103,8 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Imported $successCount folder(s) as media items'),
+        content: Text(SharedL10n.of(context)
+            .folderDetailImportedFolders(successCount)),
       ),
     );
   }
@@ -1107,7 +1135,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                   );
                 },
               ),
-              const Text('Show child numbering in Players Directory View'),
+              Text(SharedL10n.of(context).folderDetailShowChildNumbering),
             ],
           ),
         ),
@@ -1144,10 +1172,9 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                       )
                     : ReorderableListView.builder(
                         itemCount: children.length,
-                        onReorder: (oldIndex, newIndex) async {
+                        onReorderItem: (oldIndex, newIndex) async {
                           setState(() {
                             _localChildren ??= List<ViewEntry>.from(_children);
-                            if (newIndex > oldIndex) newIndex -= 1;
                             final item = _localChildren!.removeAt(oldIndex);
                             _localChildren!.insert(newIndex, item);
                           });

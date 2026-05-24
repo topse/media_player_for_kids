@@ -1,22 +1,27 @@
+import 'package:intl/intl.dart';
+
+import '../l10n/shared_l10n.dart';
 import 'hearing_constraint.dart';
 
 /// Stateless utility that converts a [HearingConstraint] tree into a
-/// German human-readable summary string.
+/// human-readable summary string in the locale carried by [loc].
 ///
 /// Used by the companion editor chips and as a basis for [EvaluationResult]
 /// messages in the player.
 class ConstraintDescriptionGenerator {
-  const ConstraintDescriptionGenerator();
+  final SharedL10n loc;
+
+  const ConstraintDescriptionGenerator(this.loc);
 
   String describe(HearingConstraint constraint) {
     if (constraint is LogicalAndConstraint) {
-      return constraint.nodes.map(describe).join(' und ');
+      return constraint.nodes.map(describe).join(loc.constraintAnd);
     }
     if (constraint is LogicalOrConstraint) {
-      return constraint.nodes.map(describe).join(' oder ');
+      return constraint.nodes.map(describe).join(loc.constraintOr);
     }
     if (constraint is LogicalNotConstraint) {
-      return 'Nicht: ${describe(constraint.node)}';
+      return loc.constraintNotPrefix(describe(constraint.node));
     }
     if (constraint is PlayCountConstraint) {
       return _describePlayCount(constraint);
@@ -28,7 +33,7 @@ class ConstraintDescriptionGenerator {
       return _describeFolderItemCount(constraint);
     }
     if (constraint is TimeOfDayConstraint) {
-      return 'Nur ${constraint.fromTime}–${constraint.toTime} Uhr';
+      return loc.constraintTimeOfDayOnly(constraint.fromTime, constraint.toTime);
     }
     if (constraint is DayOfWeekConstraint) {
       return _describeDayOfWeek(constraint);
@@ -36,73 +41,77 @@ class ConstraintDescriptionGenerator {
     if (constraint is DateRangeConstraint) {
       return _describeDateRange(constraint);
     }
-    return 'Unbekannte Einschränkung';
+    return loc.constraintUnknown;
   }
-
-  // ── Leaf descriptions ────────────────────────────────────────────────────────
 
   String _describePlayCount(PlayCountConstraint c) {
     final w = _windowLabel(c.window);
-    if (c.maxCount == 1) return 'Einmal $w';
-    return 'Maximal ${c.maxCount}× $w';
+    if (c.maxCount == 1) return loc.constraintPlayCountOnce(w);
+    return loc.constraintPlayCountTimes(c.maxCount, w);
   }
 
   String _describePlayDuration(PlayDurationConstraint c) {
-    return 'Max. ${c.maxMinutes} Min. ${_windowLabel(c.window)}';
+    return loc.constraintPlayDuration(c.maxMinutes, _windowLabel(c.window));
   }
 
   String _describeFolderItemCount(FolderItemCountConstraint c) {
-    return 'Max. ${c.maxItems} verschiedene Einträge ${_windowLabel(c.window)}';
+    return loc.constraintFolderItemCount(c.maxItems, _windowLabel(c.window));
   }
 
   String _describeDayOfWeek(DayOfWeekConstraint c) {
     final sorted = [...c.allowedDays]..sort();
-    // Common shorthand patterns.
     if (sorted.length == 5 &&
         sorted.first == 1 &&
         sorted.last == 5 &&
         sorted.every((d) => d <= 5)) {
-      return 'Nur Mo–Fr';
+      return loc.constraintDayOfWeekWeekdaysOnly;
     }
     if (sorted.length == 2 && sorted.first == 6 && sorted.last == 7) {
-      return 'Nur am Wochenende';
+      return loc.constraintDayOfWeekWeekendOnly;
     }
-    const abbr = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-    return 'Nur ${sorted.map((d) => abbr[d - 1]).join(', ')}';
+    final abbr = [
+      loc.dayAbbrMon,
+      loc.dayAbbrTue,
+      loc.dayAbbrWed,
+      loc.dayAbbrThu,
+      loc.dayAbbrFri,
+      loc.dayAbbrSat,
+      loc.dayAbbrSun,
+    ];
+    return loc.constraintDayOfWeekList(
+      sorted.map((d) => abbr[d - 1]).join(', '),
+    );
   }
 
   String _describeDateRange(DateRangeConstraint c) {
     if (c.fromDate != null && c.toDate != null) {
-      return '${_fmtDate(c.fromDate!)} – ${_fmtDate(c.toDate!)}';
+      return loc.constraintDateRangeFromTo(
+        _fmtDate(c.fromDate!),
+        _fmtDate(c.toDate!),
+      );
     }
-    if (c.fromDate != null) return 'Ab ${_fmtDate(c.fromDate!)}';
-    if (c.toDate != null) return 'Bis ${_fmtDate(c.toDate!)}';
+    if (c.fromDate != null) return loc.constraintDateRangeFrom(_fmtDate(c.fromDate!));
+    if (c.toDate != null) return loc.constraintDateRangeTo(_fmtDate(c.toDate!));
     return '';
   }
-
-  // ── Window label ─────────────────────────────────────────────────────────────
 
   String _windowLabel(TimeWindow w) {
     switch (w.type) {
       case TimeWindowType.perDay:
-        return 'pro Tag';
+        return loc.windowPerDay;
       case TimeWindowType.perWeek:
-        return 'pro Woche';
+        return loc.windowPerWeek;
       case TimeWindowType.perMonth:
-        return 'pro Monat';
+        return loc.windowPerMonth;
       case TimeWindowType.sinceDate:
-        return 'seit ${_fmtDate(w.sinceDate!)}';
+        return loc.windowSinceDate(_fmtDate(w.sinceDate!));
       case TimeWindowType.rollingHours:
-        return 'je ${w.rollingHours} Stunden';
+        return loc.windowRollingHours(w.rollingHours!);
     }
   }
 
-  // ── Formatting ───────────────────────────────────────────────────────────────
-
   String _fmtDate(String isoDate) {
     final dt = DateTime.parse(isoDate);
-    final d = dt.day.toString().padLeft(2, '0');
-    final m = dt.month.toString().padLeft(2, '0');
-    return '$d.$m.${dt.year}';
+    return DateFormat.yMd(loc.localeName).format(dt);
   }
 }

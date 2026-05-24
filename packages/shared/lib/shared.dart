@@ -12,3 +12,4 @@ export 'constraints/constraint_evaluator.dart';
 export 'constraints/constraint_description.dart';
 export 'constraints/play_log.dart';
 export 'init.dart';
+export 'l10n/shared_l10n.dart';

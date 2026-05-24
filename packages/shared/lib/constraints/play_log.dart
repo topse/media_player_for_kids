@@ -143,6 +143,68 @@ class PlayLogArchive extends CouchDocumentBase with PlayLogArchiveMappable {
   });
 }
 
+// ── Play position ────────────────────────────────────────────────────────────
+
+/// Resume point within a multi-track item.
+@MappableClass()
+class PlayPositionPoint with PlayPositionPointMappable {
+  final int track;
+  final int seconds;
+
+  const PlayPositionPoint({required this.track, required this.seconds});
+}
+
+/// Per-item entry in [PlayPosition]. Carries the item title so the document
+/// stays readable when inspected manually and survives the original item's
+/// rename or deletion.
+@MappableClass(ignoreNull: true)
+class PlayPositionItem with PlayPositionItemMappable {
+  final String title;
+
+  /// In-progress resume point. Null when the item is finished or hasn't been
+  /// started yet.
+  final PlayPositionPoint? position;
+
+  /// True once the item has been heard to its natural end.
+  final bool done;
+
+  const PlayPositionItem({
+    this.title = '',
+    this.position,
+    this.done = false,
+  });
+}
+
+/// Per-device audiobook resume points and "done" markers.
+///
+/// Document ID: `playposition-<deviceUuid>`
+///
+/// Replicated (unlike the previous `_local/playposition` storage) so the
+/// companion can list and clean up entries, and so positions survive an app
+/// reinstall via replication.
+@MappableClass(discriminatorValue: 'play_position', ignoreNull: true)
+class PlayPosition extends CouchDocumentBase with PlayPositionMappable {
+  static String docIdFor(String deviceUuid) => 'playposition-$deviceUuid';
+
+  @MappableField(key: 'device_id')
+  final String deviceId;
+
+  /// Position/done entries keyed by MediaItem ID.
+  final Map<String, PlayPositionItem> items;
+
+  PlayPosition({
+    required this.deviceId,
+    this.items = const {},
+    super.id,
+    super.rev,
+    super.attachments,
+    super.deleted,
+    super.revisions,
+    super.revsInfo,
+    super.unmappedProps,
+  });
+}
+
 // ── Device identity ──────────────────────────────────────────────────────────
 
 /// Per-device identity document stored in the replicated database.
