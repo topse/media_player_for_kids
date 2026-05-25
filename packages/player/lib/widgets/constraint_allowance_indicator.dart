@@ -37,12 +37,20 @@ class _ConstraintAllowanceIndicatorState
   @override
   void initState() {
     super.initState();
+    // Main channel: external sync, record-play events, constraint changes.
     di<HearingStatsService>().addListener(_onChanged);
+    // Live ticker: in-flight 5 s pulse during active playback so the % ticks
+    // down even between record events. This indicator is the only consumer
+    // that needs the live tick — keeping it off the main channel avoids
+    // dragging the player page and directory grid into a full re-eval every
+    // 5 s during playback.
+    di<HearingStatsService>().liveTicker.addListener(_onChanged);
     di<AdminOverrideService>().addListener(_onChanged);
   }
 
   @override
   void dispose() {
+    di<HearingStatsService>().liveTicker.removeListener(_onChanged);
     di<HearingStatsService>().removeListener(_onChanged);
     di<AdminOverrideService>().removeListener(_onChanged);
     super.dispose();
@@ -61,15 +69,10 @@ class _ConstraintAllowanceIndicatorState
     final item = widget.item;
     final allDocuments = widget.allDocuments;
     if (item != null && allDocuments != null) {
-      final allStats = Map<String, HearingStats?>.fromEntries(
-        allDocuments.keys.map(
-          (id) => MapEntry(id, statsService.statsFor(id)),
-        ),
-      );
       return evaluator.effectiveUsedRatio(
         item: item,
         allDocuments: allDocuments,
-        allStats: allStats,
+        statsLookup: statsService.statsFor,
         globalConstraint: globalConstraint,
         globalStats: statsService.globalStats(),
       );

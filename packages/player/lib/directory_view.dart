@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:player/admin/admin_override_service.dart';
 import 'package:player/hearing_stats_service.dart';
+import 'package:player/main.dart' show routeObserver;
 import 'package:player/media_player_page.dart';
 import 'package:player/play_position_service.dart';
 import 'package:player/widgets/media_app_bar.dart';
@@ -15,8 +16,8 @@ import 'package:shared/shared.dart'
         ConstraintEvaluator,
         ConstraintStatus,
         EvaluationResult,
-        HearingStats,
         MediaBaseIcon,
+        StatsLookup,
         buildEffectiveIsNewMap;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:watch_it/watch_it.dart';
@@ -39,12 +40,33 @@ class DirectoryView extends StatefulWidget {
 }
 
 class _DirectoryViewState extends State<DirectoryView>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, RouteAware {
   String? parentNodeId;
   List<MediaBase>? entries;
 
   StreamSubscription? _dbSubscription;
   Timer? _visibilityTimer;
+  final ScrollController _gridScrollController = ScrollController();
+
+  /// True while the directory page is the topmost route. Flipped by
+  /// [RouteAware] callbacks so that play-stats ticks fired by the player page
+  /// (every 5 s during playback) don't force an invisible grid rebuild.
+  bool _isCurrentRoute = true;
+
+  /// Set by [_onPlayPositionsChanged] when a notification arrives while
+  /// hidden. We rebuild once on return so the kid sees up-to-date markers.
+  bool _pendingRebuild = false;
+
+  /// Resets the grid scroll position to the top. Called after navigating
+  /// into a folder or back to a parent so the kid always starts at the top
+  /// of the new directory.
+  void _scrollGridToTop() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_gridScrollController.hasClients) {
+        _gridScrollController.jumpTo(0);
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -57,7 +79,38 @@ class _DirectoryViewState extends State<DirectoryView>
   }
 
   void _onPlayPositionsChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    // While the player page (or any other route) is on top, swallow the
+    // notification — the grid is invisible and the rebuild is wasted work.
+    // We mark it dirty so we rebuild once on return.
+    if (!_isCurrentRoute) {
+      _pendingRebuild = true;
+      return;
+    }
+    setState(() {});
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      routeObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didPushNext() {
+    _isCurrentRoute = false;
+  }
+
+  @override
+  void didPopNext() {
+    _isCurrentRoute = true;
+    if (_pendingRebuild && mounted) {
+      _pendingRebuild = false;
+      setState(() {});
+    }
   }
 
   double? _computeProgress(MediaItem item) {
@@ -109,23 +162,31 @@ class _DirectoryViewState extends State<DirectoryView>
           .whereType<MediaBase>()
           .toList();
       _log.info('useAllDocs update: ${docs?.length} docs');
-      for (final doc in docs ?? []) {
-        _log.info(
-          '  doc id=${doc.id} rev=${doc.rev} attachments=${doc.attachments?.keys.toList()}',
-        );
-      }
 
-      setState(() {
-        entries = docs;
-        // Reset to root if the current folder (or any ancestor) became hidden.
-        if (parentNodeId != null && docs != null) {
-          final byId = {for (final d in docs) if (d.id != null) d.id!: d};
-          if (_isHiddenOrHasHiddenAncestor(parentNodeId!, byId)) {
-            parentNodeId = null;
-          }
+      // Always update internal state — the grid must reflect fresh data when
+      // it becomes visible again. The expensive part (constraint evaluation
+      // for every tile) lives in build(), so we only skip the rebuild when
+      // the page is covered.
+      entries = docs;
+      if (parentNodeId != null && docs != null) {
+        final byId = {for (final d in docs) if (d.id != null) d.id!: d};
+        if (_isHiddenOrHasHiddenAncestor(parentNodeId!, byId)) {
+          parentNodeId = null;
+          _scrollGridToTop();
         }
-      });
+      }
       _scheduleVisibilityRefresh();
+
+      if (!_isCurrentRoute) {
+        // Grid is covered (e.g. player page on top). Defer rebuild until
+        // [didPopNext]; the playlog persists every 60 s and play-position
+        // writes echo through this stream, and forcing a hidden grid to
+        // re-evaluate constraints for every tile on each emission was the
+        // dominant cost during playback.
+        _pendingRebuild = true;
+        return;
+      }
+      if (mounted) setState(() {});
     });
   }
 
@@ -172,76 +233,47 @@ class _DirectoryViewState extends State<DirectoryView>
 
   @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     di<HearingStatsService>().removeListener(_onPlayPositionsChanged);
     di<AdminOverrideService>().removeListener(_onPlayPositionsChanged);
     di<PlayPositionService>().removeListener(_onPlayPositionsChanged);
     WidgetsBinding.instance.removeObserver(this);
     _visibilityTimer?.cancel();
     _dbSubscription?.cancel();
+    _gridScrollController.dispose();
     super.dispose();
   }
 
-  EvaluationResult _evalWithAncestors(
-    BuildContext context,
-    MediaBase item,
-    Map<String, MediaBase> allDocuments,
-  ) {
-    if (di<AdminOverrideService>().ignoreConstraints) {
-      return EvaluationResult.allowed;
-    }
-    final statsService = di<HearingStatsService>();
-    return const ConstraintEvaluator().effectiveEvaluation(
-      item: item,
-      allDocuments: allDocuments,
-      allStats: Map.fromEntries(
-        allDocuments.keys.map(
-          (id) => MapEntry(id, statsService.statsFor(id)),
-        ),
-      ),
-      globalConstraint: statsService.globalConstraint,
-      globalStats: statsService.globalStats(),
-      loc: SharedL10n.of(context),
-    );
-  }
-
-  /// Whether the kid can no longer hear [item] to its natural end, even with
-  /// the configured grace period. Drives the red timer marker in the grid.
+  /// Combined constraint check for a single grid tile.
   ///
-  /// Returns `false` when the item is blocked (a separate lock overlay handles
-  /// that), when no quantifiable allowance applies, or when remaining time
-  /// (plus grace) still covers the item.
-  bool _cannotFinishWithGrace(
-    BuildContext context,
-    MediaBase item,
-    Map<String, MediaBase> allDocuments,
-    int itemDurationMs,
-  ) {
-    if (itemDurationMs <= 0) return false;
-    if (di<AdminOverrideService>().ignoreConstraints) return false;
-    final evalResult = _evalWithAncestors(context, item, allDocuments);
-    if (evalResult.status == ConstraintStatus.blocked) return false;
-
-    final statsService = di<HearingStatsService>();
-    final allStats = Map<String, HearingStats?>.fromEntries(
-      allDocuments.keys.map((id) => MapEntry(id, statsService.statsFor(id))),
-    );
-
-    final effectiveRemainingMs = const ConstraintEvaluator()
-        .effectiveRemainingAllowance(
-      item: item,
-      allDocuments: allDocuments,
-      allStats: allStats,
-      globalConstraint: statsService.globalConstraint,
-      globalStats: statsService.globalStats(),
-    );
-    if (effectiveRemainingMs == null) return false;
-
-    final graceMs = (di<SharedPreferencesWithCache>().getInt(
-              AdminOverrideService.kGracePeriodMinutes,
-            ) ??
-            AdminOverrideService.defaultGracePeriodMinutes) *
-        60000;
-    return effectiveRemainingMs + graceMs < itemDurationMs;
+  /// Returns the [EvaluationResult] used for the lock overlay AND whether the
+  /// kid can no longer finish [item] within the configured grace period
+  /// (drives the red timer marker). The two used to be separate methods that
+  /// each walked the ancestor tree and built a fresh `Map<String, HearingStats?>`
+  /// per call; combining them halves the work per tile.
+  ///
+  /// Hot path — only invoked by [build] via the per-holder cache in
+  /// [_HolderEvalCache].
+  ({EvaluationResult result, bool cannotFinish}) _evalForTile({
+    required BuildContext context,
+    required MediaBase item,
+    required Map<String, MediaBase> allDocuments,
+    required _HolderEvalCache cache,
+    required int itemDurationMs,
+    required int graceMs,
+  }) {
+    if (di<AdminOverrideService>().ignoreConstraints) {
+      return (result: EvaluationResult.allowed, cannotFinish: false);
+    }
+    final perHolder = cache.forItem(item, allDocuments, context);
+    final result = perHolder.result;
+    bool cannotFinish = false;
+    if (itemDurationMs > 0 &&
+        result.status != ConstraintStatus.blocked &&
+        perHolder.effectiveRemainingMs != null) {
+      cannotFinish = perHolder.effectiveRemainingMs! + graceMs < itemDurationMs;
+    }
+    return (result: result, cannotFinish: cannotFinish);
   }
 
   @override
@@ -297,6 +329,21 @@ class _DirectoryViewState extends State<DirectoryView>
     }
 
     final l10n = SharedL10n.of(context);
+
+    // Build per-tile constraint cache. Most siblings share the same nearest
+    // constraint holder, so for typical folders this collapses M tiles' worth
+    // of evaluation work into 1 or 2 holder evaluations. Grace period and
+    // override flag are read once for the whole build.
+    final graceMs = (di<SharedPreferencesWithCache>().getInt(
+              AdminOverrideService.kGracePeriodMinutes,
+            ) ??
+            AdminOverrideService.defaultGracePeriodMinutes) *
+        60000;
+    final statsService = di<HearingStatsService>();
+    final evalCache = _HolderEvalCache(
+      statsService: statsService,
+    );
+
     return Scaffold(
       appBar: MediaAppBar(
         onBack: parentNodeId != null
@@ -305,6 +352,7 @@ class _DirectoryViewState extends State<DirectoryView>
                   final currentParent = allDocuments[parentNodeId];
                   parentNodeId = currentParent?.parent;
                 });
+                _scrollGridToTop();
               }
             : null,
         ancestors: ancestors,
@@ -344,6 +392,7 @@ class _DirectoryViewState extends State<DirectoryView>
                       ? (prefs.getInt('grid_columns_portrait') ?? 2)
                       : (prefs.getInt('grid_columns_landscape') ?? 4);
                   return GridView.builder(
+                    controller: _gridScrollController,
                     padding: const EdgeInsets.all(16),
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: crossAxisCount,
@@ -357,14 +406,20 @@ class _DirectoryViewState extends State<DirectoryView>
                       final progress = (item is MediaItem && item.isAudioBook)
                           ? _computeProgress(item)
                           : null;
-                      final constraintResult =
-                          _evalWithAncestors(context, item, allDocuments);
                       final itemDurationMs = item is MediaItem
                           ? item.media.fold<int>(
                               0, (s, t) => s + t.durationMs)
                           : 0;
-                      final cannotFinish = _cannotFinishWithGrace(
-                          context, item, allDocuments, itemDurationMs);
+                      final tileEval = _evalForTile(
+                        context: context,
+                        item: item,
+                        allDocuments: allDocuments,
+                        cache: evalCache,
+                        itemDurationMs: itemDurationMs,
+                        graceMs: graceMs,
+                      );
+                      final constraintResult = tileEval.result;
+                      final cannotFinish = tileEval.cannotFinish;
 
                       return _MediaGridItem(
                         key: ValueKey(item.id),
@@ -392,6 +447,7 @@ class _DirectoryViewState extends State<DirectoryView>
                             setState(() {
                               parentNodeId = item.id;
                             });
+                            _scrollGridToTop();
                           } else if (item is MediaItem) {
                             Navigator.push(
                               context,
@@ -415,6 +471,113 @@ class _DirectoryViewState extends State<DirectoryView>
       ),
     );
   }
+}
+
+/// Per-build cache that collapses constraint evaluation across grid tiles
+/// that share the same nearest-wins constraint holder.
+///
+/// In a typical folder the kid is browsing, every direct child sibling
+/// resolves to the same holder (the folder's own constraint, or an
+/// inherited ancestor). Without this cache each tile redundantly walks the
+/// ancestor tree and re-aggregates child stats — `effectiveEvaluation` +
+/// `effectiveRemainingAllowance` per tile per build.
+///
+/// Cache key strategy:
+/// - When the holder is the item itself (item carries its own constraint)
+///   the cached entry is unique to that item — its [`MediaBase.id`] equals
+///   the holder id.
+/// - When the holder is a folder ancestor, all siblings resolve to the same
+///   holder id and share the entry.
+/// - When no per-item constraint exists, the global constraint still applies
+///   uniformly, so a `__no_holder__` sentinel collapses those too.
+///
+/// `effectiveRemainingMs` is shared across siblings; the per-tile
+/// "cannotFinish" check then combines it with the tile's own duration.
+class _HolderEvalCache {
+  final HearingStatsService statsService;
+  final Map<String, _HolderEval> _cache = {};
+  // Closure that adapts the stats service to the StatsLookup typedef; built
+  // once and passed into the evaluator for every cache miss.
+  late final StatsLookup _lookup = statsService.statsFor;
+  static const String _noHolderKey = '__no_holder__';
+
+  _HolderEvalCache({required this.statsService});
+
+  _HolderEval forItem(
+    MediaBase item,
+    Map<String, MediaBase> allDocuments,
+    BuildContext context,
+  ) {
+    final holder = ConstraintEvaluator.findNearestConstraintHolder(
+      item: item,
+      allDocuments: allDocuments,
+    );
+    final key = holder?.id ?? _noHolderKey;
+    return _cache.putIfAbsent(
+        key, () => _compute(item, holder, allDocuments, context));
+  }
+
+  _HolderEval _compute(
+    MediaBase item,
+    MediaBase? holder,
+    Map<String, MediaBase> allDocuments,
+    BuildContext context,
+  ) {
+    const evaluator = ConstraintEvaluator();
+    final loc = SharedL10n.of(context);
+    final globalConstraint = statsService.globalConstraint;
+    final globalStats = statsService.globalStats();
+
+    EvaluationResult perItem;
+    int? perItemRemainingMs;
+    if (holder == null) {
+      perItem = EvaluationResult.allowed;
+      perItemRemainingMs = null;
+    } else {
+      perItem = evaluator.evaluateAtHolder(
+        item: item,
+        holder: holder,
+        allDocuments: allDocuments,
+        lookup: _lookup,
+        loc: loc,
+      );
+      perItemRemainingMs = evaluator.remainingAllowanceAtHolder(
+        item: item,
+        holder: holder,
+        allDocuments: allDocuments,
+        lookup: _lookup,
+      );
+    }
+
+    // Combine with global through the canonical helpers in
+    // [ConstraintEvaluator] so the most-restrictive-wins rule stays in one
+    // place — see root CLAUDE.md.
+    EvaluationResult combinedResult = perItem;
+    int? combinedRemainingMs = perItemRemainingMs;
+    if (globalConstraint != null) {
+      final globalEval = evaluator.evaluate(
+        constraint: globalConstraint,
+        itemId: '_global',
+        stats: globalStats,
+        loc: loc,
+      );
+      combinedResult = evaluator.combineStatus(perItem, globalEval);
+      final globalRemainingMs = evaluator.remainingAllowance(
+        constraint: globalConstraint,
+        stats: globalStats,
+      );
+      combinedRemainingMs =
+          evaluator.combineRemainingMs(perItemRemainingMs, globalRemainingMs);
+    }
+
+    return _HolderEval(combinedResult, combinedRemainingMs);
+  }
+}
+
+class _HolderEval {
+  final EvaluationResult result;
+  final int? effectiveRemainingMs;
+  const _HolderEval(this.result, this.effectiveRemainingMs);
 }
 
 /// Red timer badge shown in the bottom-left of a grid item when the kid's

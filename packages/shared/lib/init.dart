@@ -18,6 +18,9 @@ void initializeMappers() {
   PlayLogItemMapper.ensureInitialized();
   PlayLogMapper.ensureInitialized();
   PlayLogArchiveMapper.ensureInitialized();
+  PlayPositionPointMapper.ensureInitialized();
+  PlayPositionItemMapper.ensureInitialized();
+  PlayPositionMapper.ensureInitialized();
   DeviceIdentityMapper.ensureInitialized();
   GlobalConstraintsMapper.ensureInitialized();
 }

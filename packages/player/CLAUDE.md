@@ -204,6 +204,16 @@ The indicator combines per-item-in-context with global using the cross-package m
 
 **Live updates during playback.** The indicator must visibly tick down while the kid listens — i.e. its source of truth must reflect the in-flight session, not just the last persisted state. The player keeps stats fresh independently of the (slower) CouchDB persist cadence to satisfy this.
 
+**The live-tick notification is scoped to the indicator only.** `HearingStatsService` fires the in-flight refresh tick on a dedicated `liveTicker` `ChangeNotifier` rather than the main one. The directory grid and player page must NOT subscribe to it — pulling them into a full re-evaluation every few seconds was the dominant cause of mid-playback lag. The allowance-timer lifetime is wall-clock based: it is set at play start and rescheduled only on real events (pause/resume, slider seek, skip-next/skip-previous, and external playlog/global-constraint sync caught by the player's `useAllDocs` subscription). The 5-second in-memory pulse must not reschedule it.
+
+## Performance contracts for constraint evaluation
+
+Constraint evaluation in the directory grid and during playback runs on the UI thread; the grid in particular evaluates per tile on every rebuild. These rules exist to keep that work bounded and prevent regressions of the original lag bug (constant per-tile ancestor walks plus a 5 s pulse forcing full re-evaluation everywhere).
+
+- **The directory grid must not re-evaluate while another route covers it.** `DirectoryView` uses `RouteAware` to skip rebuilds — both from service listeners and from the `useAllDocs` stream — while the player page or admin page is on top, then rebuilds once on `didPopNext`. Without this, every playlog persist (~60 s) and every play-position write echoes through `useAllDocs` and forces the invisible grid to re-evaluate constraints for every tile.
+- **Per-build per-holder constraint cache.** When the directory grid renders, siblings sharing a nearest-wins constraint holder (typically all children of the current folder) share a single constraint evaluation rather than walking the ancestor tree and re-aggregating child stats per tile. See `_HolderEvalCache` in [lib/directory_view.dart](lib/directory_view.dart). The cache is rebuilt on every grid build (so it never goes stale across real state changes) and combines per-item with the global constraint via the canonical `ConstraintEvaluator.combine*` helpers — the most-restrictive-wins rule still lives in one place (see root [CLAUDE.md](../../CLAUDE.md)).
+- **Hot-path callers must use `StatsLookup`, not a materialised stats map.** `ConstraintEvaluator`'s ancestor-walk methods accept either a `Map<String, HearingStats?>` (kept for test ergonomics) or a `StatsLookup` callback. Grid, player gate, and indicator pass `HearingStatsService.statsFor` as the lookup so we don't allocate a full `{itemId → stats}` map per evaluation — the evaluator only consults the item itself plus a holder's direct children.
+
 ## Code navigation
 
 Entry points to look at when working on the major concerns above. Each file's responsibilities are documented in its own file-level docstring — keep details there, not here.
@@ -245,6 +255,7 @@ When extending this package:
 - Treat the requirements above as behavior contracts.
 - Preserve audiobook resume semantics.
 - Recalculate effective playback volume whenever the active output device changes.
+- **New `@MappableClass` document types must be registered in [`packages/shared/lib/init.dart`](../shared/lib/init.dart) under `initializeMappers()` — including all nested mappable types.** Without `XxxMapper.ensureInitialized()` the discriminator (`!doc_type`) never dispatches; `db.get()` silently returns a generic `CouchDocumentBase` with the real fields stuffed into `unmappedProps`. Callers' `loaded is XxxType` checks then fail, the service falls through to a fresh in-memory doc with `rev = null`, and every subsequent `db.put` is treated as "create" → 409 conflict forever (already-exists). Symptom: in-memory state diverges from DB, UI shows transient state during a session that vanishes on restart, persist logs show repeated 409s. This bit us on `PlayPositionMapper`.
 
 ## Open TODO from README
 

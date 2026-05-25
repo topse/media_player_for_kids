@@ -28,7 +28,22 @@ class HearingStatsService extends ChangeNotifier {
   /// while playback is in flight, without doing a CouchDB write on every
   /// tick. The refreshed event is the same one the persist timer will
   /// later write.
+  ///
+  /// Fires the dedicated [liveTicker] (not the main change notifier) so the
+  /// player page and directory view aren't dragged into a full re-evaluation
+  /// on every tick — the only consumer that needs the live update is the
+  /// app-bar allowance indicator.
   static const Duration _refreshInterval = Duration(seconds: 5);
+
+  /// Dedicated notifier fired by the in-flight 5 s refresh tick. UI that
+  /// must tick down live during playback (the app-bar allowance indicator)
+  /// listens here in addition to the main change notifier.
+  ///
+  /// Kept separate so the player page's allowance-timer reschedule and the
+  /// directory grid's full rebuild don't run on every tick — they only react
+  /// to real stats changes (record events, external sync, constraint config
+  /// changes) on the main channel.
+  final ChangeNotifier liveTicker = _PublicNotifier();
 
   /// SharedPreferences key for the minimum-play threshold.
   /// Must appear in the SharedPreferences allowList in main.dart.
@@ -283,12 +298,15 @@ class HearingStatsService extends ChangeNotifier {
 
     // Start in-memory refresh ticker so allowance-indicator UIs reflect
     // current playback without waiting for the slower persist cycle.
+    // Fires only [liveTicker], not the main channel — see field docs.
     _refreshTimer?.cancel();
     _refreshTimer = Timer.periodic(_refreshInterval, (_) {
       final id = _activeItemId;
       if (id == null) return;
       _updateActiveEvent(id);
-      _notifyDeferred();
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        (liveTicker as _PublicNotifier).fire();
+      });
     });
   }
 
@@ -744,6 +762,7 @@ class HearingStatsService extends ChangeNotifier {
     _playlogSub?.cancel();
     _persistTimer?.cancel();
     _refreshTimer?.cancel();
+    liveTicker.dispose();
     super.dispose();
   }
 
@@ -766,4 +785,11 @@ class HearingStatsService extends ChangeNotifier {
     final s = dt.second.toString().padLeft(2, '0');
     return '$y-$m-${d}T$h:$min:$s';
   }
+}
+
+/// Thin [ChangeNotifier] whose [notifyListeners] is callable from outside its
+/// own class via [fire]. Used so [HearingStatsService] can expose a
+/// secondary notifier ([HearingStatsService.liveTicker]) without subclassing.
+class _PublicNotifier extends ChangeNotifier {
+  void fire() => notifyListeners();
 }

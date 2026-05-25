@@ -83,7 +83,11 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
     super.initState();
     _liveDocuments = Map.of(widget.allDocuments);
     WidgetsBinding.instance.addObserver(this);
-    di<HearingStatsService>().addListener(_onStatsChanged);
+    // No HearingStatsService listener — the [useAllDocs] subscription set up
+    // in [_initAudioAndPlay] already fires on external playlog and
+    // global-constraint sync, which is the only case where a mid-play
+    // re-evaluation is needed. Local record events (start/seek/stop)
+    // schedule the allowance timer inline at their call sites.
     _initAudioAndPlay();
   }
 
@@ -101,6 +105,22 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
     final current = _liveDocuments[widget.item.id!] ?? widget.item;
     if (current is! models.MediaItem || !current.isNew) return;
     di<DartCouchDb>().put(current.copyWith(isNew: false));
+  }
+
+  /// True when the singleton [AudioPlayerService] is currently loaded with
+  /// this page's item — i.e. our `loadAndPlay` has run and the queue still
+  /// reflects our tracks.
+  ///
+  /// Critical because `_saveCurrentPosition` reads `currentIndex`, `position`
+  /// and the threshold accumulator from singleton services. If the kid backed
+  /// out before our `loadAndPlay` completed (so the previous item's tracks
+  /// are still in the queue) those reads return the *previous* item's state.
+  /// Writing that under *our* item's id would create a phantom resume
+  /// position — exactly the cross-item contamination we saw in the playlog.
+  bool _audioIsForOurItem() {
+    final tracks = _audioService.tracks;
+    if (tracks.isEmpty) return false;
+    return tracks.first.id == widget.item.media.first.attachmentId;
   }
 
   /// Saves the current playhead as the audiobook resume position, gated on
@@ -121,6 +141,7 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
   /// 30 s of the last track always marks the item as done.
   void _saveCurrentPosition() {
     if (!widget.item.isAudioBook) return;
+    if (!_audioIsForOurItem()) return;
     final currentIndex = _audioService.player.currentIndex;
     if (currentIndex == null) return;
     final position = _audioService.player.position;
@@ -202,11 +223,7 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
       final result = const ConstraintEvaluator().effectiveEvaluation(
         item: widget.item,
         allDocuments: widget.allDocuments,
-        allStats: Map.fromEntries(
-          widget.allDocuments.keys.map(
-            (id) => MapEntry(id, statsService.statsFor(id)),
-          ),
-        ),
+        statsLookup: statsService.statsFor,
         globalConstraint: statsService.globalConstraint,
         globalStats: statsService.globalStats(),
       );
@@ -378,11 +395,7 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
     final allowanceMs = const ConstraintEvaluator().effectiveRemainingAllowance(
       item: widget.item,
       allDocuments: _liveDocuments,
-      allStats: Map.fromEntries(
-        _liveDocuments.keys.map(
-          (id) => MapEntry(id, statsService.statsFor(id)),
-        ),
-      ),
+      statsLookup: statsService.statsFor,
       globalConstraint: statsService.globalConstraint,
       globalStats: statsService.globalStats(),
     );
@@ -399,13 +412,6 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
     _allowanceTimer = Timer(Duration(milliseconds: allowanceMs), () {
       _onAllowanceExpired();
     });
-  }
-
-  /// Called when [HearingStatsService] notifies of a change (e.g. external
-  /// playlog sync from another device). Re-evaluates the constraint while
-  /// playing and stops playback (with grace period) if now blocked.
-  void _onStatsChanged() {
-    _reevaluateConstraintIfPlaying();
   }
 
   /// Re-evaluates time-based constraints against live documents and current
@@ -534,7 +540,6 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    di<HearingStatsService>().removeListener(_onStatsChanged);
     _allowanceTimer?.cancel();
     _completionSub?.cancel();
     _playingSub?.cancel();

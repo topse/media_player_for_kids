@@ -77,6 +77,10 @@ The companion provides the **only** UI for authoring `HearingConstraint` trees. 
 - **Offline-first via CouchDB.** Both apps work fully offline and reconcile via replication. Any new write should respect this and never assume a live network.
 - **Constraint editing has a templates-first surface.** Most parents will never open advanced mode; the template set is the supported authoring path. New templates should be additive — don't remove existing ones, even if redundant, because they may be referenced by parents' memory of the UI.
 
+## Change guidance
+
+- **New `@MappableClass` document types must be registered in [`packages/shared/lib/init.dart`](../shared/lib/init.dart) under `initializeMappers()` — including all nested mappable types.** Without `XxxMapper.ensureInitialized()` the discriminator (`!doc_type`) never dispatches; `db.get()` silently returns a generic `CouchDocumentBase` with the real fields stuffed into `unmappedProps`. Callers' `loaded is XxxType` checks then fail, the service falls through to a fresh in-memory doc with `rev = null`, and every subsequent `db.put` is treated as "create" → 409 conflict forever (already-exists). Symptom: in-memory state diverges from DB, UI shows transient state during a session that vanishes on restart, persist logs show repeated 409s. This bit us on `PlayPositionMapper`.
+
 ## Code navigation
 
 Entry points for the major concerns above. Each file's responsibilities are documented in its own file-level docstring — keep details there, not here.

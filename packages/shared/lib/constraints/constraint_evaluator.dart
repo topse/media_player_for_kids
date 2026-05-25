@@ -1,12 +1,9 @@
 import 'package:intl/intl.dart';
-import 'package:logging/logging.dart';
 
 import '../l10n/shared_l10n.dart';
 import '../models/datatypes.dart';
 import 'hearing_constraint.dart';
 import 'hearing_stats.dart';
-
-final _log = Logger('ConstraintEvaluator');
 
 // ── Result types ──────────────────────────────────────────────────────────────
 
@@ -33,6 +30,16 @@ class EvaluationResult {
   static const EvaluationResult allowed =
       EvaluationResult(status: ConstraintStatus.allowed);
 }
+
+/// Lazy stats accessor — returns the [HearingStats] for [itemId] or `null`.
+///
+/// Hot-path callers (the directory grid, the player page, the allowance
+/// indicator) build one of these once per UI build and pass it into the
+/// evaluator wrappers instead of pre-materialising a full
+/// `Map<String, HearingStats?>` per evaluation. The evaluator only touches
+/// the item itself and (for folder constraints) the holder's direct
+/// children, so materialising the full map per call was pure waste.
+typedef StatsLookup = HearingStats? Function(String itemId);
 
 // ── Evaluator ─────────────────────────────────────────────────────────────────
 
@@ -81,48 +88,80 @@ class ConstraintEvaluator {
   EvaluationResult evaluateWithAncestors({
     required MediaBase item,
     required Map<String, MediaBase> allDocuments,
-    required Map<String, HearingStats?> allStats,
+    Map<String, HearingStats?> allStats = const {},
+    StatsLookup? statsLookup,
     DateTime? now,
     SharedL10n? loc,
   }) {
     final t = now ?? DateTime.now();
-    _log.fine('evaluateWithAncestors: item="${item.name}" (${item.id})');
+    final lookup = statsLookup ?? (id) => allStats[id];
 
     // Walk up to the nearest node with a constraint.
     MediaBase? current = item;
     while (current != null) {
       if (current.hearingConstraint != null) {
-        final children = allDocuments.values
-            .where((d) => d.parent == current!.id)
-            .map((d) => d.id!)
-            .toList();
-
-        final childStats = Map<String, HearingStats>.fromEntries(
-          children
-              .map((id) => MapEntry(id, allStats[id]))
-              .where((e) => e.value != null)
-              .map((e) => MapEntry(e.key, e.value!)),
+        return _evalAtHolder(
+          item: item,
+          holder: current,
+          allDocuments: allDocuments,
+          lookup: lookup,
+          now: t,
+          loc: loc,
         );
-
-        final result = _eval(
-          current.hearingConstraint!,
-          _effectiveStats(item, current, children, allStats),
-          childStats,
-          children,
-          t,
-          loc,
-        );
-
-        _log.fine('  nearest constraint on "${current.name}" (${current.id}): '
-            '${result.status.name}'
-            '${result.humanReadableReason != null ? ' — ${result.humanReadableReason}' : ''}');
-        return result;
       }
       current = current.parent != null ? allDocuments[current.parent] : null;
     }
-
-    _log.fine('  no constraint in chain → allowed');
     return EvaluationResult.allowed;
+  }
+
+  /// Variant that takes a pre-resolved [holder] so callers iterating many
+  /// items in the same folder can compute the holder once and reuse the
+  /// result across siblings. Behaves identically to
+  /// [evaluateWithAncestors] when [holder] is the same node the walk would
+  /// have found.
+  EvaluationResult evaluateAtHolder({
+    required MediaBase item,
+    required MediaBase holder,
+    required Map<String, MediaBase> allDocuments,
+    required StatsLookup lookup,
+    DateTime? now,
+    SharedL10n? loc,
+  }) {
+    return _evalAtHolder(
+      item: item,
+      holder: holder,
+      allDocuments: allDocuments,
+      lookup: lookup,
+      now: now ?? DateTime.now(),
+      loc: loc,
+    );
+  }
+
+  EvaluationResult _evalAtHolder({
+    required MediaBase item,
+    required MediaBase holder,
+    required Map<String, MediaBase> allDocuments,
+    required StatsLookup lookup,
+    required DateTime now,
+    SharedL10n? loc,
+  }) {
+    final children = allDocuments.values
+        .where((d) => d.parent == holder.id)
+        .map((d) => d.id!)
+        .toList();
+    final childStats = <String, HearingStats>{};
+    for (final id in children) {
+      final s = lookup(id);
+      if (s != null) childStats[id] = s;
+    }
+    return _eval(
+      holder.hearingConstraint!,
+      _effectiveStatsLookup(item, holder, children, lookup),
+      childStats,
+      children,
+      now,
+      loc,
+    );
   }
 
   /// Finds the nearest ancestor (or the item itself) that carries a
@@ -160,24 +199,24 @@ class ConstraintEvaluator {
   ///     inside that folder). Without aggregating here the folder's own
   ///     stats would be `null` and the constraint would silently report
   ///     "allowed" no matter how much was played.
-  HearingStats? _effectiveStats(
+  HearingStats? _effectiveStatsLookup(
     MediaBase item,
     MediaBase constraintHolder,
     List<String> holderChildren,
-    Map<String, HearingStats?> allStats,
+    StatsLookup lookup,
   ) {
     if (holderChildren.isEmpty) {
-      // Leaf holder: use the item's own stats.
-      return allStats[item.id];
+      return lookup(item.id!);
     }
-    // Folder holder: aggregate all direct-child play events.
-    final allChildEvents = holderChildren
-        .expand(
-            (id) => allStats[id]?.playEvents ?? const <PlayEvent>[])
-        .toList();
+    final allChildEvents = <PlayEvent>[];
+    for (final id in holderChildren) {
+      final s = lookup(id);
+      if (s != null) allChildEvents.addAll(s.playEvents);
+    }
     return allChildEvents.isEmpty
         ? null
-        : HearingStats(itemId: constraintHolder.id!, playEvents: allChildEvents);
+        : HearingStats(
+            itemId: constraintHolder.id!, playEvents: allChildEvents);
   }
 
   // ── Dispatch ────────────────────────────────────────────────────────────────
@@ -520,45 +559,69 @@ class ConstraintEvaluator {
   int? remainingAllowanceWithAncestors({
     required MediaBase item,
     required Map<String, MediaBase> allDocuments,
-    required Map<String, HearingStats?> allStats,
+    Map<String, HearingStats?> allStats = const {},
+    StatsLookup? statsLookup,
     DateTime? now,
   }) {
     final t = now ?? DateTime.now();
-    MediaBase? current = item;
+    final lookup = statsLookup ?? (id) => allStats[id];
 
+    MediaBase? current = item;
     while (current != null) {
       if (current.hearingConstraint != null) {
-        final children = allDocuments.values
-            .where((d) => d.parent == current!.id)
-            .map((d) => d.id!)
-            .toList();
-
-        final childStats = Map<String, HearingStats>.fromEntries(
-          children
-              .map((id) => MapEntry(id, allStats[id]))
-              .where((e) => e.value != null)
-              .map((e) => MapEntry(e.key, e.value!)),
+        return _allowanceAtHolder(
+          item: item,
+          holder: current,
+          allDocuments: allDocuments,
+          lookup: lookup,
+          now: t,
         );
-
-        final a = _allowance(
-          current.hearingConstraint!,
-          _effectiveStats(item, current, children, allStats),
-          childStats,
-          children,
-          t,
-        );
-
-        _log.fine('remainingAllowanceWithAncestors for "${item.name}": '
-            'nearest constraint on "${current.name}" → '
-            '${a != null ? "${a}ms" : "null (not time-limiting)"}');
-        return a;
       }
       current = current.parent != null ? allDocuments[current.parent] : null;
     }
-
-    _log.fine('remainingAllowanceWithAncestors for "${item.name}": '
-        'no constraint in chain → unlimited');
     return null;
+  }
+
+  /// Variant of [remainingAllowanceWithAncestors] that takes a pre-resolved
+  /// constraint [holder]. See [evaluateAtHolder] for motivation.
+  int? remainingAllowanceAtHolder({
+    required MediaBase item,
+    required MediaBase holder,
+    required Map<String, MediaBase> allDocuments,
+    required StatsLookup lookup,
+    DateTime? now,
+  }) =>
+      _allowanceAtHolder(
+        item: item,
+        holder: holder,
+        allDocuments: allDocuments,
+        lookup: lookup,
+        now: now ?? DateTime.now(),
+      );
+
+  int? _allowanceAtHolder({
+    required MediaBase item,
+    required MediaBase holder,
+    required Map<String, MediaBase> allDocuments,
+    required StatsLookup lookup,
+    required DateTime now,
+  }) {
+    final children = allDocuments.values
+        .where((d) => d.parent == holder.id)
+        .map((d) => d.id!)
+        .toList();
+    final childStats = <String, HearingStats>{};
+    for (final id in children) {
+      final s = lookup(id);
+      if (s != null) childStats[id] = s;
+    }
+    return _allowance(
+      holder.hearingConstraint!,
+      _effectiveStatsLookup(item, holder, children, lookup),
+      childStats,
+      children,
+      now,
+    );
   }
 
   /// Returns the remaining allowance as a multiple of one full item listen.
@@ -581,46 +644,37 @@ class ConstraintEvaluator {
   double? remainingPlayRatioWithAncestors({
     required MediaBase item,
     required Map<String, MediaBase> allDocuments,
-    required Map<String, HearingStats?> allStats,
+    Map<String, HearingStats?> allStats = const {},
+    StatsLookup? statsLookup,
     int itemDurationMs = 0,
     DateTime? now,
   }) {
     final t = now ?? DateTime.now();
-    MediaBase? current = item;
+    final lookup = statsLookup ?? (id) => allStats[id];
 
+    MediaBase? current = item;
     while (current != null) {
       if (current.hearingConstraint != null) {
         final children = allDocuments.values
             .where((d) => d.parent == current!.id)
             .map((d) => d.id!)
             .toList();
-
-        final childStats = Map<String, HearingStats>.fromEntries(
-          children
-              .map((id) => MapEntry(id, allStats[id]))
-              .where((e) => e.value != null)
-              .map((e) => MapEntry(e.key, e.value!)),
-        );
-
-        final ratio = _allowanceRatio(
+        final childStats = <String, HearingStats>{};
+        for (final id in children) {
+          final s = lookup(id);
+          if (s != null) childStats[id] = s;
+        }
+        return _allowanceRatio(
           current.hearingConstraint!,
-          _effectiveStats(item, current, children, allStats),
+          _effectiveStatsLookup(item, current, children, lookup),
           childStats,
           children,
           t,
           itemDurationMs,
         );
-
-        _log.fine('remainingPlayRatioWithAncestors for "${item.name}": '
-            'nearest constraint on "${current.name}" → '
-            '${ratio != null ? ratio.toStringAsFixed(2) : "null"}');
-        return ratio;
       }
       current = current.parent != null ? allDocuments[current.parent] : null;
     }
-
-    _log.fine('remainingPlayRatioWithAncestors for "${item.name}": '
-        'no constraint in chain → unlimited');
     return null;
   }
 
@@ -631,13 +685,59 @@ class ConstraintEvaluator {
   // semantics. These helpers exist so the combine rule lives in exactly
   // one place — every grid tile, every playback gate, the allowance timer
   // and the app-bar indicator delegate here.
+  //
+  // The `combine*` helpers below are exposed so callers that compute the
+  // per-item side separately (e.g. a per-folder cache that bypasses the
+  // ancestor walk for known holders) can still go through the canonical
+  // combine rule rather than re-implementing it.
+
+  /// Combine rule for status: most-restrictive wins (blocked > warning >
+  /// allowed). `globalResult == null` returns [perItem] unchanged.
+  EvaluationResult combineStatus(
+    EvaluationResult perItem,
+    EvaluationResult? globalResult,
+  ) {
+    if (globalResult == null) return perItem;
+    return globalResult.status.index > perItem.status.index
+        ? globalResult
+        : perItem;
+  }
+
+  /// Combine rule for remaining allowance in ms: smaller wins. Either side
+  /// may be `null` (no time-limiting constraint on that side); returns
+  /// whichever is non-null, or `null` if both are.
+  int? combineRemainingMs(int? perItemMs, int? globalMs) {
+    if (perItemMs != null && globalMs != null) {
+      return perItemMs < globalMs ? perItemMs : globalMs;
+    }
+    return perItemMs ?? globalMs;
+  }
+
+  /// Combine rule for remaining play ratio: smaller wins. Same null
+  /// handling as [combineRemainingMs].
+  double? combineRemainingRatio(double? perItem, double? global) {
+    if (perItem != null && global != null) {
+      return perItem < global ? perItem : global;
+    }
+    return perItem ?? global;
+  }
+
+  /// Combine rule for used ratio: larger (most-restrictive) wins. Same
+  /// null handling as [combineRemainingMs].
+  double? combineUsedRatio(double? perItem, double? global) {
+    if (perItem != null && global != null) {
+      return perItem > global ? perItem : global;
+    }
+    return perItem ?? global;
+  }
 
   /// Combined evaluation: returns the worst (most-restrictive) status of the
   /// nearest-wins per-item constraint and the global constraint.
   EvaluationResult effectiveEvaluation({
     required MediaBase item,
     required Map<String, MediaBase> allDocuments,
-    required Map<String, HearingStats?> allStats,
+    Map<String, HearingStats?> allStats = const {},
+    StatsLookup? statsLookup,
     HearingConstraint? globalConstraint,
     HearingStats? globalStats,
     DateTime? now,
@@ -648,6 +748,7 @@ class ConstraintEvaluator {
       item: item,
       allDocuments: allDocuments,
       allStats: allStats,
+      statsLookup: statsLookup,
       now: t,
       loc: loc,
     );
@@ -659,7 +760,7 @@ class ConstraintEvaluator {
       now: t,
       loc: loc,
     );
-    return global.status.index > perItem.status.index ? global : perItem;
+    return combineStatus(perItem, global);
   }
 
   /// Combined remaining allowance in ms. Returns the smaller of the per-item
@@ -668,7 +769,8 @@ class ConstraintEvaluator {
   int? effectiveRemainingAllowance({
     required MediaBase item,
     required Map<String, MediaBase> allDocuments,
-    required Map<String, HearingStats?> allStats,
+    Map<String, HearingStats?> allStats = const {},
+    StatsLookup? statsLookup,
     HearingConstraint? globalConstraint,
     HearingStats? globalStats,
     DateTime? now,
@@ -678,6 +780,7 @@ class ConstraintEvaluator {
       item: item,
       allDocuments: allDocuments,
       allStats: allStats,
+      statsLookup: statsLookup,
       now: t,
     );
     final globalMs = globalConstraint == null
@@ -687,10 +790,7 @@ class ConstraintEvaluator {
             stats: globalStats,
             now: t,
           );
-    if (perItemMs != null && globalMs != null) {
-      return perItemMs < globalMs ? perItemMs : globalMs;
-    }
-    return perItemMs ?? globalMs;
+    return combineRemainingMs(perItemMs, globalMs);
   }
 
   /// Combined remaining play ratio (multiples of one item-listen). Returns
@@ -698,7 +798,8 @@ class ConstraintEvaluator {
   double? effectiveRemainingPlayRatio({
     required MediaBase item,
     required Map<String, MediaBase> allDocuments,
-    required Map<String, HearingStats?> allStats,
+    Map<String, HearingStats?> allStats = const {},
+    StatsLookup? statsLookup,
     HearingConstraint? globalConstraint,
     HearingStats? globalStats,
     int itemDurationMs = 0,
@@ -709,6 +810,7 @@ class ConstraintEvaluator {
       item: item,
       allDocuments: allDocuments,
       allStats: allStats,
+      statsLookup: statsLookup,
       itemDurationMs: itemDurationMs,
       now: t,
     );
@@ -720,10 +822,7 @@ class ConstraintEvaluator {
             itemDurationMs: itemDurationMs,
             now: t,
           );
-    if (perItem != null && global != null) {
-      return perItem < global ? perItem : global;
-    }
-    return perItem ?? global;
+    return combineRemainingRatio(perItem, global);
   }
 
   /// Combined used ratio (0.0 = nothing used, 1.0 = limit reached). Returns
@@ -732,7 +831,8 @@ class ConstraintEvaluator {
   double? effectiveUsedRatio({
     required MediaBase item,
     required Map<String, MediaBase> allDocuments,
-    required Map<String, HearingStats?> allStats,
+    Map<String, HearingStats?> allStats = const {},
+    StatsLookup? statsLookup,
     HearingConstraint? globalConstraint,
     HearingStats? globalStats,
     DateTime? now,
@@ -742,6 +842,7 @@ class ConstraintEvaluator {
       item: item,
       allDocuments: allDocuments,
       allStats: allStats,
+      statsLookup: statsLookup,
       now: t,
     );
     final global = globalConstraint == null
@@ -751,10 +852,7 @@ class ConstraintEvaluator {
             stats: globalStats,
             now: t,
           );
-    if (perItem != null && global != null) {
-      return perItem > global ? perItem : global;
-    }
-    return perItem ?? global;
+    return combineUsedRatio(perItem, global);
   }
 
   // ── Allowance dispatch ──────────────────────────────────────────────────────
@@ -1052,34 +1150,69 @@ class ConstraintEvaluator {
   double? usedRatioWithAncestors({
     required MediaBase item,
     required Map<String, MediaBase> allDocuments,
-    required Map<String, HearingStats?> allStats,
+    Map<String, HearingStats?> allStats = const {},
+    StatsLookup? statsLookup,
     DateTime? now,
   }) {
     final t = now ?? DateTime.now();
+    final lookup = statsLookup ?? (id) => allStats[id];
+
     MediaBase? current = item;
     while (current != null) {
       if (current.hearingConstraint != null) {
-        final children = allDocuments.values
-            .where((d) => d.parent == current!.id)
-            .map((d) => d.id!)
-            .toList();
-        final childStats = Map<String, HearingStats>.fromEntries(
-          children
-              .map((id) => MapEntry(id, allStats[id]))
-              .where((e) => e.value != null)
-              .map((e) => MapEntry(e.key, e.value!)),
-        );
-        return _usedRatio(
-          current.hearingConstraint!,
-          _effectiveStats(item, current, children, allStats),
-          childStats,
-          children,
-          t,
+        return _usedRatioAtHolder(
+          item: item,
+          holder: current,
+          allDocuments: allDocuments,
+          lookup: lookup,
+          now: t,
         );
       }
       current = current.parent != null ? allDocuments[current.parent] : null;
     }
     return null;
+  }
+
+  /// Variant of [usedRatioWithAncestors] that takes a pre-resolved
+  /// constraint [holder]. See [evaluateAtHolder] for motivation.
+  double? usedRatioAtHolder({
+    required MediaBase item,
+    required MediaBase holder,
+    required Map<String, MediaBase> allDocuments,
+    required StatsLookup lookup,
+    DateTime? now,
+  }) =>
+      _usedRatioAtHolder(
+        item: item,
+        holder: holder,
+        allDocuments: allDocuments,
+        lookup: lookup,
+        now: now ?? DateTime.now(),
+      );
+
+  double? _usedRatioAtHolder({
+    required MediaBase item,
+    required MediaBase holder,
+    required Map<String, MediaBase> allDocuments,
+    required StatsLookup lookup,
+    required DateTime now,
+  }) {
+    final children = allDocuments.values
+        .where((d) => d.parent == holder.id)
+        .map((d) => d.id!)
+        .toList();
+    final childStats = <String, HearingStats>{};
+    for (final id in children) {
+      final s = lookup(id);
+      if (s != null) childStats[id] = s;
+    }
+    return _usedRatio(
+      holder.hearingConstraint!,
+      _effectiveStatsLookup(item, holder, children, lookup),
+      childStats,
+      children,
+      now,
+    );
   }
 
   double? _usedRatio(

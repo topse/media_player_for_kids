@@ -30,7 +30,11 @@ void main() async {
 
   initializeMappers();
 
-  Logger.root.level = Level.FINEST; // defaults to Level.INFO
+  // INFO is the normal level. Crank up to FINE/FINEST when actively debugging
+  // a subsystem — but be aware that the constraint evaluator and audio
+  // pipeline emit fine-level lines on hot paths, and string interpolation
+  // happens regardless of level.
+  Logger.root.level = Level.INFO;
   Logger.root.onRecord.listen((record) {
     if (record.loggerName.startsWith('dart_couch')) {
       // Don't log dart_couch stuff, it's not in focus here. Adjust the filter as needed when debugging.
@@ -74,6 +78,12 @@ void main() async {
 
   runApp(const MainApp());
 }
+
+/// Global navigator observer used by routes that need to pause expensive
+/// work while another page is on top of them (e.g. the directory grid stops
+/// reacting to playlog ticks while the player page is presented).
+final RouteObserver<ModalRoute<dynamic>> routeObserver =
+    RouteObserver<ModalRoute<dynamic>>();
 
 class MainApp extends StatefulWidget {
   const MainApp({super.key});
@@ -119,6 +129,7 @@ class _MainAppState extends State<MainApp> {
                 title: 'Media Player for kids Companion',
                 localizationsDelegates: SharedL10n.localizationsDelegates,
                 supportedLocales: SharedL10n.supportedLocales,
+                navigatorObservers: [routeObserver],
                 theme: ThemeData(
                   colorScheme: ColorScheme.fromSeed(
                     seedColor: Colors.deepPurple,
