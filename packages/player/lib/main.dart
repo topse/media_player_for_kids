@@ -10,6 +10,7 @@ import 'package:logging/logging.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:player/directory_view.dart';
+import 'package:player/error_overlay.dart';
 import 'package:player/kid_name_gate.dart';
 
 import 'package:player/admin/admin_override_service.dart';
@@ -25,6 +26,9 @@ import 'package:watch_it/watch_it.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Surface unhandled errors on-device (logs aren't reachable on the target).
+  // Must be installed before anything can throw asynchronously.
+  installGlobalErrorHandlers();
   DartCouchDb.ensureInitialized();
   await initializeDateFormatting();
 
@@ -115,6 +119,11 @@ class _MainAppState extends State<MainApp> {
     return MaterialApp(
       localizationsDelegates: SharedL10n.localizationsDelegates,
       supportedLocales: SharedL10n.supportedLocales,
+      // Mount the global error overlay above every route (including the
+      // nested MaterialApp below) so any unhandled error is painted on
+      // top of a frozen/black page instead of being invisible.
+      builder: (context, child) =>
+          GlobalErrorOverlay(child: child ?? const SizedBox.shrink()),
       home: Builder(
         builder: (context) => AdminPasswordGate(
           child: FutureBuilder<Directory>(

@@ -710,6 +710,15 @@ class SharedL10nDe extends SharedL10n {
       'Nummerierung im Player anzeigen';
 
   @override
+  String get folderDetailFilterAll => 'Alle anzeigen';
+
+  @override
+  String get folderDetailFilterOnlyVisible => 'Nur sichtbare';
+
+  @override
+  String get folderDetailFilterOnlyHidden => 'Nur versteckte';
+
+  @override
   String get folderDialogCreateTitle => 'Ordner erstellen';
 
   @override
@@ -995,4 +1004,10 @@ class SharedL10nDe extends SharedL10n {
   String audioImportFinishedFile(String filename) {
     return 'Datei fertig\n$filename';
   }
+
+  @override
+  String get hearingStatsAllKids => 'Alle Kinder';
+
+  @override
+  String get hearingStatsLabel => 'Statistik:';
 }

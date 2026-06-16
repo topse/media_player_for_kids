@@ -245,11 +245,11 @@ class _MediaItemDetailState extends State<MediaItemDetail> {
 
     if (confirmed == true) {
       try {
-        // Fetch the MediaTrack document to get its current revision.
+        // Fetch the MediaTrack document so we can cascade-delete it.
         final trackDoc = await di<DartCouchDb>().get(
           mediaAttachment.attachmentId,
         );
-        if (trackDoc == null) {
+        if (trackDoc is! MediaTrack) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -259,8 +259,10 @@ class _MediaItemDetailState extends State<MediaItemDetail> {
           return;
         }
 
-        // Remove the entire MediaTrack doc (deletes audio + cover atomically).
-        await di<DartCouchDb>().remove(trackDoc.id!, trackDoc.rev!);
+        // Remove the MediaTrack doc (its audio + cover attachments go with the
+        // tombstone). Deleting a single track does not touch the owning item,
+        // so we update its media list explicitly below.
+        await trackDoc.delete(di<DartCouchDb>());
 
         // Remove from media list and update the MediaItem.
         setState(() {

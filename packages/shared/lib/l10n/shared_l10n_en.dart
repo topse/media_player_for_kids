@@ -708,6 +708,15 @@ class SharedL10nEn extends SharedL10n {
       'Show child numbering in player directory view';
 
   @override
+  String get folderDetailFilterAll => 'Show all';
+
+  @override
+  String get folderDetailFilterOnlyVisible => 'Only visible';
+
+  @override
+  String get folderDetailFilterOnlyHidden => 'Only hidden';
+
+  @override
   String get folderDialogCreateTitle => 'Create folder';
 
   @override
@@ -986,4 +995,10 @@ class SharedL10nEn extends SharedL10n {
   String audioImportFinishedFile(String filename) {
     return 'Finished file\n$filename';
   }
+
+  @override
+  String get hearingStatsAllKids => 'All Kids';
+
+  @override
+  String get hearingStatsLabel => 'Stats:';
 }

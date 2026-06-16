@@ -1340,6 +1340,24 @@ abstract class SharedL10n {
   /// **'Show child numbering in player directory view'**
   String get folderDetailShowChildNumbering;
 
+  /// No description provided for @folderDetailFilterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Show all'**
+  String get folderDetailFilterAll;
+
+  /// No description provided for @folderDetailFilterOnlyVisible.
+  ///
+  /// In en, this message translates to:
+  /// **'Only visible'**
+  String get folderDetailFilterOnlyVisible;
+
+  /// No description provided for @folderDetailFilterOnlyHidden.
+  ///
+  /// In en, this message translates to:
+  /// **'Only hidden'**
+  String get folderDetailFilterOnlyHidden;
+
   /// No description provided for @folderDialogCreateTitle.
   ///
   /// In en, this message translates to:
@@ -1783,6 +1801,18 @@ abstract class SharedL10n {
   /// In en, this message translates to:
   /// **'Finished file\n{filename}'**
   String audioImportFinishedFile(String filename);
+
+  /// No description provided for @hearingStatsAllKids.
+  ///
+  /// In en, this message translates to:
+  /// **'All Kids'**
+  String get hearingStatsAllKids;
+
+  /// No description provided for @hearingStatsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Stats:'**
+  String get hearingStatsLabel;
 }
 
 class _SharedL10nDelegate extends LocalizationsDelegate<SharedL10n> {

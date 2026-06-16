@@ -13,10 +13,20 @@ import 'package:media_kit/media_kit.dart';
 
 import 'audio_player_service.dart';
 import 'db_repair.dart';
+import 'hearing_stats_service.dart';
 import 'login_screen.dart';
 import 'my_home_page.dart';
 
 void main() async {
+  Logger.root.level = Level.FINEST; // defaults to Level.INFO
+  Logger.root.onRecord.listen((record) {
+    LineSplitter ls = LineSplitter();
+    for (final line in ls.convert(record.message)) {
+      // ignore: avoid_print
+      print('${record.loggerName} ${record.level.name}: ${record.time}: $line');
+    }
+  });
+
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   DartCouchDb.ensureInitialized();
@@ -28,15 +38,6 @@ void main() async {
   final audioPlayer = AudioPlayerService();
   await audioPlayer.initialize();
   di.registerSingleton<AudioPlayerService>(audioPlayer);
-
-  Logger.root.level = Level.FINEST; // defaults to Level.INFO
-  Logger.root.onRecord.listen((record) {
-    LineSplitter ls = LineSplitter();
-    for (final line in ls.convert(record.message)) {
-      // ignore: avoid_print
-      print('${record.loggerName} ${record.level.name}: ${record.time}: $line');
-    }
-  });
 
   //OfflineFirstServer server = OfflineFirstServer(migration: MyMigration());
   HttpDartCouchServer server = HttpDartCouchServer(migration: MyMigration());
@@ -96,6 +97,12 @@ class _MyAppState extends State<MyApp> {
     if (db != null) {
       di.registerSingleton<DartCouchDb>(db);
 
+      final hearingStats = HearingStatsService();
+      di.registerSingleton<HearingStatsService>(hearingStats);
+      // init is intentionally not awaited here — device discovery and
+      // subscription setup happens in the background after login.
+      hearingStats.init(db);
+
       // Show progress page while running database repair.
       // The extra frame delay lets Flutter paint the spinner before we start
       // heavy async work — without it the indicator never animates.
@@ -126,6 +133,10 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> handleLogout() async {
+    if (di.isRegistered<HearingStatsService>()) {
+      di<HearingStatsService>().dispose();
+      di.unregister<HearingStatsService>();
+    }
     if (di.isRegistered<DartCouchDb>()) {
       di.unregister<DartCouchDb>();
     }

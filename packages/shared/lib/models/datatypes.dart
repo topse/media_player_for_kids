@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:dart_mappable/dart_mappable.dart';
 import 'package:dart_couch/dart_couch.dart';
 import '../constraints/hearing_constraint.dart';
+import '../constraints/play_log.dart';
 
 part 'datatypes.mapper.dart';
 
@@ -66,6 +69,38 @@ abstract class MediaBase extends CouchDocumentBase with MediaBaseMappable {
   void removeCoverImage() {
     attachments?.remove(coverAttachmentName);
   }
+
+  /// Deletes this folder/item together with everything that cascades from it,
+  /// then purges the matching per-device play-position entries in one pass.
+  ///
+  /// Cascade rules (all required behaviour — see root CLAUDE.md "Catalog
+  /// deletion"):
+  ///  * [MediaFolder] → every descendant folder/item recursively, and for each
+  ///    item its [MediaTrack] documents.
+  ///  * [MediaItem] → the [MediaTrack] documents it references.
+  ///  * The cover image of a folder/item, and the audio + cover of a track, are
+  ///    attachments stored *on the document itself*, so CouchDB drops them with
+  ///    the deletion tombstone — there is no separate attachment step.
+  ///  * Every removed item id is purged from all `playposition-<uuid>`
+  ///    documents (the "delete must drop the resume position immediately"
+  ///    contract).
+  ///
+  /// The recent `playlog-<uuid>` is intentionally NOT touched here: its
+  /// orphaned entries are swept on the companion's next startup so recent
+  /// statistics remain available until then.
+  ///
+  /// Prefer this over [removeCascade] unless you are batching several deletions
+  /// and want to run the play-position purge only once at the end.
+  Future<void> delete(DartCouchDb db) async {
+    final removedIds = await removeCascade(db);
+    await PlayPosition.purgeItems(db, removedIds);
+  }
+
+  /// Removes this document and its in-tree / track dependents, returning the
+  /// set of removed [MediaBase] ids. Does NOT touch the per-device side
+  /// documents — [delete] does that once for the whole cascade. Subclasses
+  /// implement the type-specific traversal.
+  Future<Set<String>> removeCascade(DartCouchDb db);
 
   static const _weekdayAbbr = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
@@ -186,6 +221,33 @@ class MediaFolder extends MediaBase with MediaFolderMappable {
     return null;
   }
 
+  /// Deletes every direct child (which recurses into their own cascade), then
+  /// this folder. Children are read from the authoritative `mediatree/by_parent`
+  /// view rather than any in-memory tree, so the cascade is complete regardless
+  /// of what the caller has loaded. The view excludes `media_track` docs, so
+  /// only child folders/items come back here.
+  @override
+  Future<Set<String>> removeCascade(DartCouchDb db) async {
+    final removed = <String>{};
+    final children = await db.query(
+      'mediatree/by_parent',
+      includeDocs: true,
+      startkey: '[${jsonEncode(id)}]',
+      endkey: '[${jsonEncode(id)},{}]',
+    );
+    if (children != null) {
+      for (final row in children.rows) {
+        final child = row.doc;
+        if (child is MediaBase) {
+          removed.addAll(await child.removeCascade(db));
+        }
+      }
+    }
+    await db.remove(id!, rev!);
+    removed.add(id!);
+    return removed;
+  }
+
   @override
   String toString() {
     return 'MediaFolder(name: $name, parent: $parent, sortHint: $sortHint)';
@@ -274,6 +336,22 @@ class MediaItem extends MediaBase with MediaItemMappable {
     return null;
   }
 
+  /// Deletes every [MediaTrack] this item references (each track's audio + cover
+  /// attachments go with it), then this item. Tracks that are orphaned outside
+  /// the [media] list (e.g. a crash mid-import) are not visible here and are
+  /// instead reclaimed by the companion's startup repair sweep.
+  @override
+  Future<Set<String>> removeCascade(DartCouchDb db) async {
+    for (final m in media) {
+      final track = await db.get(m.attachmentId);
+      if (track is MediaTrack) {
+        await track.delete(db);
+      }
+    }
+    await db.remove(id!, rev!);
+    return {id!};
+  }
+
   static final fromMap = MediaItemMapper.fromMap;
   static final fromJson = MediaItemMapper.fromJson;
 }
@@ -316,6 +394,19 @@ class MediaTrack extends CouchDocumentBase with MediaTrackMappable {
     super.revsInfo,
     super.unmappedProps,
   });
+
+  /// Deletes this track document. The audio and cover files are attachments on
+  /// this document, so CouchDB removes them with the deletion tombstone — there
+  /// is nothing further down the tree to cascade.
+  ///
+  /// Note: this does NOT update the owning [MediaItem.media] list. When you
+  /// delete a single track in isolation (not as part of deleting its parent
+  /// item via [MediaItem.delete]), also remove the matching [MediaAttachment]
+  /// from the parent item and persist it, or the reference dangles until the
+  /// companion's next startup repair.
+  Future<void> delete(DartCouchDb db) async {
+    await db.remove(id!, rev!);
+  }
 
   static final fromMap = MediaTrackMapper.fromMap;
   static final fromJson = MediaTrackMapper.fromJson;

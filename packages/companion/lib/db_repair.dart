@@ -6,8 +6,17 @@ import 'package:shared/shared.dart';
 
 final _log = Logger('DbRepair');
 
-/// Scans the database for two classes of inconsistency introduced by the
+/// Scans the database for several classes of inconsistency introduced by the
 /// MediaTrack architecture and repairs them in-place.
+///
+/// **0. Orphaned subtrees** — [MediaFolder]/[MediaItem] documents that are no
+/// longer reachable from the root because an ancestor folder was deleted
+/// out-of-band (Fauxton, scripts, a replication race) without cascading. These
+/// strand silently: they are invisible in the tree UI (so a parent cannot
+/// delete them), their items keep referencing their tracks (so pass 2 would
+/// otherwise keep the audio), and their items still "exist" (so pass 4 would
+/// otherwise keep their stats). This pass deletes the unreachable nodes first
+/// so passes 1, 2 and 4 then reclaim the freed tracks and play-data for free.
 ///
 /// **1. Stale media links** — [MediaItem] documents that reference a
 /// [MediaTrack] doc ID in their `media` list, but the [MediaTrack] doc no
@@ -38,20 +47,51 @@ Future<void> repairDatabase(
 
   final allDocsResult = await db.allDocs(includeDocs: true);
 
+  final allMediaBase = <MediaBase>[]; // folders + items, for reachability
   final allMediaItems = <MediaItem>[];
   final allMediaTracks = <String, MediaTrack>{}; // doc ID → doc
 
   for (final row in allDocsResult.rows) {
     final doc = row.doc;
-    if (doc is MediaItem) {
-      allMediaItems.add(doc);
+    if (doc is MediaBase) {
+      allMediaBase.add(doc);
+      if (doc is MediaItem) allMediaItems.add(doc);
     } else if (doc is MediaTrack) {
       allMediaTracks[doc.id!] = doc;
     }
   }
-  
+
   if (onProgress != null) {
     onProgress('Analyzing media structure...', 0.2);
+  }
+
+  // --- 0. Reclaim orphaned subtrees (MediaBase nodes unreachable from root) ---
+  // We delete the unreachable nodes directly (not via the MediaBase.delete
+  // cascade): we already hold the full set in memory, direct removal is
+  // cycle-safe, and the play-position purge is handled by pass 4 below.
+  final orphans = _findOrphanedMedia(allMediaBase);
+  if (orphans.isNotEmpty) {
+    if (onProgress != null) {
+      onProgress('Reclaiming orphaned media...', 0.3);
+    }
+    final orphanIds = {for (final o in orphans) o.id!};
+    int reclaimed = 0;
+    for (final doc in orphans) {
+      _log.warning(
+        'Orphaned ${doc is MediaFolder ? 'folder' : 'item'} "${doc.name}" '
+        '(${doc.id}, parent: ${doc.parent}) unreachable from root — deleting.',
+      );
+      try {
+        await db.remove(doc.id!, doc.rev!);
+        reclaimed++;
+      } catch (e) {
+        _log.severe('Failed to delete orphaned media ${doc.id}: $e');
+      }
+    }
+    // Drop them from the working set so the passes below see their tracks as
+    // unreferenced (pass 2) and their play-data entries as invalid (pass 4).
+    allMediaItems.removeWhere((i) => orphanIds.contains(i.id));
+    _log.info('Reclaimed $reclaimed orphaned media node(s).');
   }
 
   // Collect all track IDs that are legitimately referenced.
@@ -139,6 +179,52 @@ Future<void> repairDatabase(
   if (onProgress != null) {
     onProgress('Finalizing repairs...', 1.0);
   }
+}
+
+/// Returns every [MediaBase] in [allMediaBase] that is NOT reachable from the
+/// root by following `parent` links — i.e. its parent chain hits a deleted
+/// ancestor or a cycle. The whole stranded subtree is returned, since every
+/// descendant of an unreachable node is itself unreachable.
+List<MediaBase> _findOrphanedMedia(List<MediaBase> allMediaBase) {
+  final byId = {for (final m in allMediaBase) m.id!: m};
+  final reachable = <String, bool>{};
+
+  bool isReachable(MediaBase start) {
+    final path = <String>{};
+    MediaBase cur = start;
+    late bool result;
+    while (true) {
+      final cid = cur.id!;
+      final memoed = reachable[cid];
+      if (memoed != null) {
+        result = memoed; // joined a chain we already resolved
+        break;
+      }
+      if (cur.parent == null) {
+        result = true; // reached the root
+        break;
+      }
+      if (!path.add(cid)) {
+        result = false; // cid already on the path → cycle
+        break;
+      }
+      final next = byId[cur.parent];
+      if (next == null) {
+        result = false; // parent points at a doc that no longer exists
+        break;
+      }
+      cur = next;
+    }
+    for (final id in path) {
+      reachable[id] = result;
+    }
+    return result;
+  }
+
+  return [
+    for (final m in allMediaBase)
+      if (!isReachable(m)) m,
+  ];
 }
 
 /// Drops entries in every `playlog-<uuid>` and `playposition-<uuid>`

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:dart_couch_widgets/dart_couch.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +7,7 @@ import 'package:animated_tree_view/animated_tree_view.dart';
 import 'package:watch_it/watch_it.dart';
 
 import 'expandable_fab.dart';
+import 'hearing_stats_service.dart';
 import 'media_folder_detail.dart';
 import 'media_folder_dialog.dart';
 import 'media_item_detail.dart';
@@ -43,6 +43,10 @@ class _MyHomePageState extends State<MyHomePage> {
   Map<String, MediaBase> _allDocumentsMap = {};
   final Map<String, IndexedTreeNode> _nodeById = {};
   String? _pendingSelectionId; // ID of node to select when it appears
+
+  Map<String, ItemStats> _hearingStats = {};
+  List<DeviceInfo> _hearingDevices = [];
+  String? _selectedDeviceId; // null = all kids
 
   void _registerNode(IndexedTreeNode node) {
     _nodeById[node.key] = node;
@@ -185,6 +189,14 @@ class _MyHomePageState extends State<MyHomePage> {
     super.initState();
     _registerNode(treeRoot);
 
+    // Listen to hearing stats changes.
+    if (di.isRegistered<HearingStatsService>()) {
+      final svc = di<HearingStatsService>();
+      svc.addListener(_onStatsChanged);
+      _hearingStats = svc.stats;
+      _hearingDevices = svc.devices;
+    }
+
     Stream<ViewResult?> treeView = di<DartCouchDb>().useView(
       'mediatree/by_parent',
       includeDocs: true,
@@ -214,6 +226,24 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
+  void _onStatsChanged() {
+    if (!mounted) return;
+    final svc = di<HearingStatsService>();
+    setState(() {
+      _hearingStats = svc.stats;
+      _hearingDevices = svc.devices;
+      _selectedDeviceId = svc.selectedDeviceId;
+    });
+  }
+
+  @override
+  void dispose() {
+    if (di.isRegistered<HearingStatsService>()) {
+      di<HearingStatsService>().removeListener(_onStatsChanged);
+    }
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final effectivelyNewById = buildEffectiveIsNewMap(_allDocumentsMap);
@@ -223,13 +253,59 @@ class _MyHomePageState extends State<MyHomePage> {
       appBar: AppBar(
         title: Text(l10n.companionAppTitle),
         actions: [
+          if (_hearingDevices.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.hearing,
+                    size: 18,
+                    color: IconTheme.of(context).color,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    l10n.hearingStatsLabel,
+                    style: DefaultTextStyle.of(
+                      context,
+                    ).style.copyWith(fontSize: 12),
+                  ),
+                  const SizedBox(width: 2),
+                  DropdownButton<String?>(
+                    value: _selectedDeviceId,
+                    underline: const SizedBox(),
+                    dropdownColor: Theme.of(context).colorScheme.surface,
+                    items: [
+                      DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text(l10n.hearingStatsAllKids),
+                      ),
+                      for (final device in _hearingDevices)
+                        DropdownMenuItem<String?>(
+                          value: device.uuid,
+                          child: Text(device.kidName),
+                        ),
+                    ],
+                    onChanged: (value) {
+                      setState(() => _selectedDeviceId = value);
+                      if (di.isRegistered<HearingStatsService>()) {
+                        di<HearingStatsService>().selectedDeviceId = value;
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
           const AudioPlaybackControls(),
           PopupMenuButton<String>(
             onSelected: (value) {
               if (value == 'global_constraints') {
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const GlobalConstraintPage(),
-                ));
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const GlobalConstraintPage(),
+                  ),
+                );
               } else if (value == 'logout') {
                 widget.onLogout();
               }
@@ -290,6 +366,15 @@ class _MyHomePageState extends State<MyHomePage> {
                   final visibilityInfo = media.visibilityInfo;
                   final textColor = isRestricted ? Colors.grey : null;
 
+                  final stats = subtreeHearingStats(
+                    media,
+                    _hearingStats.isNotEmpty ? _hearingStats : null,
+                    _allDocumentsMap,
+                  );
+                  final subtitleText = visibilityInfo != null
+                      ? visibilityInfo
+                      : null;
+
                   return GestureDetector(
                     onTap: () {
                       setState(() {
@@ -302,10 +387,18 @@ class _MyHomePageState extends State<MyHomePage> {
                         media.name,
                         style: TextStyle(color: textColor),
                       ),
-                      subtitle: visibilityInfo != null
-                          ? Text(
-                              visibilityInfo,
-                              style: TextStyle(color: textColor),
+                      subtitle: (subtitleText != null || !stats.isEmpty)
+                          ? Wrap(
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 6,
+                              children: [
+                                if (subtitleText != null)
+                                  Text(
+                                    subtitleText,
+                                    style: TextStyle(color: textColor),
+                                  ),
+                                if (!stats.isEmpty) StatsChip(stats: stats),
+                              ],
                             )
                           : null,
                       selected: node == _selectedNode,
@@ -321,12 +414,12 @@ class _MyHomePageState extends State<MyHomePage> {
                           constraintBadgeColor: media.hearingConstraint != null
                               ? Colors.deepPurple
                               : ConstraintEvaluator.findNearestConstraintHolder(
-                                        item: media,
-                                        allDocuments: _allDocumentsMap,
-                                      ) !=
-                                      null
-                                  ? Colors.grey
-                                  : null,
+                                      item: media,
+                                      allDocuments: _allDocumentsMap,
+                                    ) !=
+                                    null
+                              ? Colors.grey
+                              : null,
                         ),
                       ),
                       trailing: IntrinsicWidth(
@@ -487,6 +580,7 @@ class _MyHomePageState extends State<MyHomePage> {
         folder: folder,
         lastViewResult: _lastViewResult,
         selectNode: _selectNode,
+        hearingStats: _hearingStats.isNotEmpty ? _hearingStats : null,
       );
     }
 
@@ -606,7 +700,10 @@ class _MyHomePageState extends State<MyHomePage> {
           descendantCount == 0
               ? l10n.companionDeleteOneConfirm(kind, node.data.name)
               : l10n.companionDeleteManyConfirm(
-                  kind, node.data.name, descendantCount),
+                  kind,
+                  node.data.name,
+                  descendantCount,
+                ),
         ),
         actions: [
           TextButton(
@@ -622,56 +719,10 @@ class _MyHomePageState extends State<MyHomePage> {
     );
 
     if (confirmed == true) {
-      // Collect every doomed item ID before any removal so we can also
-      // purge their play-position entries from every device's
-      // `playposition-<deviceUuid>` document. Folders are included too —
-      // a constraint-bearing folder won't have a position entry but a
-      // folder turned into an item later might; cheaper to be uniform.
-      final removedIds = <String>{
-        for (final d in descendants) d.data.id!,
-        node.data.id!,
-      };
-
-      // Delete all descendants first (bottom-up)
-      for (final descendant in descendants.reversed) {
-        await di<DartCouchDb>().remove(
-          descendant.data.id!,
-          descendant.data.rev!,
-        );
-      }
-
-      // Finally delete the node itself
-      await di<DartCouchDb>().remove(node.data.id!, node.data.rev!);
-
-      await _purgePlayPositionsFor(removedIds);
-    }
-  }
-
-  /// Removes entries for any of [removedIds] from every replicated
-  /// `playposition-<deviceUuid>` document. Each device owns its own doc, so
-  /// we list all of them via [DartCouchDb.allDocs] and rewrite the ones
-  /// that referenced a removed item.
-  Future<void> _purgePlayPositionsFor(Set<String> removedIds) async {
-    if (removedIds.isEmpty) return;
-    final db = di<DartCouchDb>();
-
-    final result = await db.allDocs(
-      startkey: jsonEncode('playposition-'),
-      endkey: jsonEncode('playposition-￿'),
-      includeDocs: true,
-    );
-
-    for (final row in result.rows) {
-      final doc = row.doc;
-      if (doc is! PlayPosition) continue;
-
-      final filtered = <String, PlayPositionItem>{
-        for (final e in doc.items.entries)
-          if (!removedIds.contains(e.key)) e.key: e.value,
-      };
-      if (filtered.length == doc.items.length) continue;
-
-      await db.put(doc.copyWith(items: filtered));
+      // One cascade entry point: deletes descendants, their MediaTrack docs and
+      // attachments, and purges play-position entries immediately. See
+      // MediaBase.delete in the shared package.
+      await (node.data as MediaBase).delete(di<DartCouchDb>());
     }
   }
 }

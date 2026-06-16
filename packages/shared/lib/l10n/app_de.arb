@@ -1,21 +1,16 @@
 {
   "@@locale": "de",
-
   "constraintAnd": " und ",
   "constraintOr": " oder ",
   "constraintNotPrefix": "Nicht: {desc}",
-
   "constraintPlayCountOnce": "Einmal {window}",
   "constraintPlayCountTimes": "Maximal {count}× {window}",
   "constraintPlayDuration": "Max. {minutes} Min. {window}",
   "constraintFolderItemCount": "Max. {count} verschiedene Einträge {window}",
-
   "constraintTimeOfDayOnly": "Nur {from}–{to} Uhr",
-
   "constraintDayOfWeekWeekdaysOnly": "Nur Mo–Fr",
   "constraintDayOfWeekWeekendOnly": "Nur am Wochenende",
   "constraintDayOfWeekList": "Nur {days}",
-
   "dayAbbrMon": "Mo",
   "dayAbbrTue": "Di",
   "dayAbbrWed": "Mi",
@@ -23,19 +18,15 @@
   "dayAbbrFri": "Fr",
   "dayAbbrSat": "Sa",
   "dayAbbrSun": "So",
-
   "constraintDateRangeFromTo": "{from} – {to}",
   "constraintDateRangeFrom": "Ab {date}",
   "constraintDateRangeTo": "Bis {date}",
-
   "constraintUnknown": "Unbekannte Einschränkung",
-
   "windowPerDay": "pro Tag",
   "windowPerWeek": "pro Woche",
   "windowPerMonth": "pro Monat",
   "windowSinceDate": "seit {date}",
   "windowRollingHours": "je {hours} Stunden",
-
   "reasonNoAccess": "Kein Zugang",
   "reasonLocked": "Gesperrt",
   "reasonMaxPlaysReached": "Maximal {count}× {window} erreicht",
@@ -48,7 +39,6 @@
   "reasonNotAvailableToday": "Heute nicht verfügbar",
   "reasonAvailableFrom": "Verfügbar ab {date}",
   "reasonNoLongerAvailable": "Nicht mehr verfügbar",
-
   "commonCancel": "Abbrechen",
   "commonOk": "OK",
   "commonSave": "Speichern",
@@ -56,13 +46,11 @@
   "commonYes": "Ja",
   "commonNo": "Nein",
   "commonHidden": "Versteckt",
-
   "adminAccessRequired": "Admin-Zugang erforderlich",
   "adminPassword": "Admin-Passwort",
   "adminPasswordIncorrect": "Falsches Passwort",
   "adminPasswordIncorrectCurrent": "Aktuelles Passwort ist falsch",
   "adminPasswordVerify": "Bestätigen",
-
   "adminPasswordChangeTitle": "Admin-Passwort ändern",
   "adminPasswordCurrent": "Aktuelles Passwort",
   "adminPasswordNew": "Neues Passwort",
@@ -72,82 +60,62 @@
   "adminPasswordsDoNotMatch": "Passwörter stimmen nicht überein",
   "adminPasswordChange": "Passwort ändern",
   "adminPasswordChangedSnack": "Passwort erfolgreich geändert",
-
   "adminPasswordSetTitle": "Admin-Passwort festlegen",
   "adminPasswordSetExplanation": "Bitte ein Admin-Passwort für die Ersteinrichtung festlegen.",
   "adminPasswordPlain": "Passwort",
   "adminPasswordPleaseEnter": "Bitte ein Passwort eingeben",
   "adminPasswordConfirm": "Passwort bestätigen",
   "adminPasswordSet": "Passwort festlegen",
-
   "adminSettingsTitle": "Admin-Einstellungen",
   "adminAudioOutputDevices": "Audio-Ausgabegeräte",
   "adminAudioOutputDevicesSubtitle": "Lautstärke pro Ausgabegerät begrenzen",
-
   "adminGridColumnsPortrait": "Spalten im Hochformat: {count}",
   "adminGridColumnsLandscape": "Spalten im Querformat: {count}",
-
   "adminHearingRulesSection": "Hörregeln",
-
   "adminMinPlayDurationDescription": "Mindestdauer, ab der ein Abspielvorgang gezählt wird und der Abspielfortschritt eines Hörbuchs gespeichert wird. Titel die kürzer sind als dieser Wert zählen immer.",
   "adminMinPlayDurationDisabled": "Mindestdauer: deaktiviert",
   "adminMinPlayDuration": "Mindestdauer: {seconds} s",
   "adminMinPlaySliderLabelOff": "aus",
   "adminMinPlaySliderLabel": "{seconds} s",
-
   "adminGracePeriodDescription": "Wenn die Hörzeit abläuft und der Titel hat noch weniger als diese Zeit übrig, darf das Kind fertig hören.",
   "adminGracePeriod": "Kulanzzeit: {minutes} min",
   "adminGraceSliderLabel": "{minutes} min",
-
   "adminVersionLoading": "Version …",
   "adminVersion": "Version {version} (Build {build})",
-
   "kidNameTitle": "Wer benutzt dieses Gerät?",
   "kidNameLabel": "Dein Name",
   "kidNamePleaseEnter": "Bitte gib deinen Namen ein",
   "kidNameDone": "Fertig",
-
   "playerAppTitle": "Media Player für Kinder",
   "playerMenuShowAdmin": "Admin-Optionen anzeigen",
-
   "directoryHearingRulesDisabled": "Hörregeln deaktiviert",
   "directoryDateLocksDisabled": "Datumssperren deaktiviert",
   "directoryNoMediaItems": "Keine Medien gefunden",
   "directoryItemUnavailable": "Jetzt nicht verfügbar",
-
   "playerListeningTimeUp": "Hörzeit aufgebraucht",
-
   "audioDeviceNoneFound": "Keine Audio-Ausgabegeräte gefunden.",
-
   "audioDeviceEmergencyTitle": "Notfall-Ausnahmen",
   "audioDeviceEmergencyHelper": "Nur für den Notfall aktivieren. Bitte nach der Reise wieder deaktivieren.",
   "audioDeviceIgnoreConstraints": "Hörregeln ignorieren",
   "audioDeviceIgnoreConstraintsSub": "Alle Hör-Einschränkungen sind deaktiviert",
   "audioDeviceIgnoreDates": "Datumssperren ignorieren",
   "audioDeviceIgnoreDatesSub": "Inhalte mit Zeitfenstern (von/bis) sind sichtbar",
-
   "audioDeviceBluetoothBannerText": "Bluetooth-Zugriff erlauben, um alle gekoppelten Geräte anzuzeigen, auch wenn sie ausgeschaltet sind.",
   "audioDeviceBluetoothBannerAllow": "Erlauben",
-
   "audioDeviceStatusActive": "aktiv",
   "audioDeviceStatusAvailable": "jetzt verfügbar",
   "audioDeviceStatusPairedUnavailable": "gekoppelt, derzeit nicht verfügbar",
   "audioDeviceStatusUnavailable": "derzeit nicht verfügbar",
-
   "audioDeviceVolumeLimit": "Lautstärkebegrenzung",
   "audioDeviceNoLimit": "Keine Begrenzung",
   "audioDeviceLimitedTo": "Audio um {db} dB unter Maximum begrenzt",
-
   "audioDeviceUnavailablePairedHelper": "Dieses Gerät ist Android bekannt, ist aber derzeit nicht ansteuerbar. Die Lautstärkebegrenzung wird übernommen, sobald es verfügbar wird.",
   "audioDeviceUnavailableTypeHelper": "Dieser Gerätetyp ist derzeit nicht ansteuerbar, die Einstellungen bleiben aber gespeichert.",
-
   "audioDevicePairedBluetoothTitle": "Gekoppelte Bluetooth-Geräte",
   "audioDevicePairedBluetoothHelper": "Bluetooth-Zugriff erlauben, um mit Android gekoppelte Kopfhörer und Lautsprecher anzuzeigen, auch wenn sie gerade ausgeschaltet sind.",
   "audioDevicePairedBluetoothAllow": "Bluetooth-Zugriff erlauben",
-
   "audioDeviceBluetoothTitle": "Bluetooth-Gerät",
   "audioDeviceBluetoothNoneYet": "Es ist noch kein konkret gekoppeltes Bluetooth-Gerät bekannt. Sobald Android einen gekoppelten Kopfhörer meldet, erscheint er hier mit eigenem Eintrag.",
-
   "commonEdit": "Bearbeiten",
   "commonDuplicate": "Duplizieren",
   "commonLogin": "Anmelden",
@@ -162,7 +130,6 @@
   "commonFrom": "Von",
   "commonUntil": "Bis",
   "commonHours": "Stunden",
-
   "companionAppTitle": "Media Player für Kinder Companion",
   "companionGlobalConstraintsMenu": "Globale Einschränkungen",
   "companionLogoutMenu": "Abmelden",
@@ -170,12 +137,10 @@
   "companionDeleteOneConfirm": "{kind} „{name}\" wirklich löschen?",
   "companionDeleteManyConfirm": "{kind} „{name}\" und die {count} Untereinträge wirklich löschen?",
   "companionCreateNewTitle": "Neu erstellen",
-
   "globalConstraintsHeading": "Globale Hörregeln",
   "globalConstraintsDescription": "Beschränkt die gesamte tägliche/wöchentliche Hörzeit über alle Inhalte hinweg. Wird zusätzlich zu den Einschränkungen einzelner Einträge ausgewertet (die strengere Regel gewinnt).",
   "globalConstraintsRemoveTooltip": "Einschränkung entfernen",
   "globalConstraintsCreate": "Globale Einschränkung erstellen",
-
   "editorTitle": "Hörregeln bearbeiten",
   "editorReset": "Zurücksetzen",
   "editorApply": "Übernehmen",
@@ -212,7 +177,6 @@
   "editorTypeDayOfWeek": "Wochentag",
   "editorTypeDateRange": "Zeitraum",
   "editorPickDateTooltip": "Datum wählen",
-
   "presetThreeTimesPerDay": "Dreimal am Tag",
   "presetOnceAWeek": "Einmal die Woche",
   "presetDaytimeOnly": "Nur tagsüber (8–20 Uhr)",
@@ -223,7 +187,6 @@
   "preset2xMonFri3xSatSun": "2× Mo–Fr, 3× Sa+So",
   "preset2hMonFri3hSatSun": "2h Mo–Fr, 3h Sa+So",
   "presetMax2DifferentItems": "Max. 2 verschiedene Einträge",
-
   "headerVisibleDateRange": "Sichtbarer Zeitraum:",
   "headerFromDate": "Von:",
   "headerToDate": "Bis:",
@@ -240,11 +203,13 @@
   "headerChildrenCount": "{count} Einträge",
   "headerNotSetPlaceholder": "*Nicht gesetzt*",
   "headerNoRules": "Keine Einschränkungen",
-
   "folderDetailAudioBook": "Hörbuch",
   "folderDetailIsNew": "Neu",
   "folderDetailHidden": "Versteckt",
   "folderDetailShowChildNumbering": "Nummerierung im Player anzeigen",
+  "folderDetailFilterAll": "Alle anzeigen",
+  "folderDetailFilterOnlyVisible": "Nur sichtbare",
+  "folderDetailFilterOnlyHidden": "Nur versteckte",
   "folderDialogCreateTitle": "Ordner erstellen",
   "folderDialogEditTitle": "Ordner bearbeiten",
   "folderDialogNameLabel": "Ordnername",
@@ -267,7 +232,6 @@
   "itemDetailRepeat": "Wiederholen",
   "itemDetailNewFlag": "Neu",
   "itemDetailUseTrackCovers": "Im Player Track-Cover statt Eintrags-Cover anzeigen",
-
   "folderDetailNameForNewItem": "Name für neuen Medien-Eintrag",
   "folderDetailEditName": "Name bearbeiten",
   "folderDetailDeletedSnack": "„{name}\" gelöscht",
@@ -278,7 +242,6 @@
   "folderDetailNoValidAudioImported": "Keine gültigen Audiodateien importiert",
   "folderDetailImportedItems": "{count} Einträge importiert",
   "folderDetailImportedFolders": "{count} Ordner als Medien-Einträge importiert",
-
   "importDialogTitleFiles": "{count} Audiodateien importieren",
   "importDialogSingleItemTitle": "Alle in einen Medien-Eintrag importieren",
   "importDialogSingleItemSubtitle": "Alle Dateien landen in einem Eintrag",
@@ -292,7 +255,6 @@
   "importDialogAllOneItemSubtitle": "Alle Dateien landen in einem Eintrag",
   "importDialogEachFileTitle": "Jede Datei als eigenen Medien-Eintrag",
   "importDialogEachFileSubtitle": "Ein Eintrag pro Audiodatei",
-
   "audioImportCompressTitle": "Audiodateien komprimieren?",
   "audioImportKeepOriginals": "Nein, Originale behalten",
   "audioImportCompress": "Ja, komprimieren",
@@ -300,7 +262,6 @@
   "audioImportProgressLine": "{count} Dateien importiert",
   "audioImportUnsupported": "Nicht unterstützter Dateityp: {filename}",
   "audioImportErrorAdding": "Fehler beim Hinzufügen der Datei: {error}",
-
   "loginEditTooltip": "Bearbeiten",
   "loginDuplicateTooltip": "Duplizieren",
   "loginDeleteTooltip": "Löschen",
@@ -314,7 +275,6 @@
   "loginPleaseEnterServerUrl": "Bitte Server-URL eingeben",
   "loginPleaseEnterUsername": "Bitte Benutzernamen eingeben",
   "loginPleaseEnterPassword": "Bitte Passwort eingeben",
-
   "audioImportTotalProgress": "{percent} %",
   "audioImportFileCount": "{count, plural, =1{1 Datei} other{{count} Dateien}}",
   "audioImportCompressBody": "{fileText} sind nicht stark komprimiert. Nach AAC umwandeln (160 kbps Stereo / 80 kbps Mono)? Die Qualität ist von CD nicht zu unterscheiden. Die Originaldateien werden nicht verändert.",
@@ -323,5 +283,7 @@
   "audioImportImportingFile": "Importiere Datei\n{filename}",
   "audioImportSkippedFile": "Nicht unterstützte Datei übersprungen\n{filename}",
   "audioImportCompressingFile": "Komprimiere Datei\n{filename}",
-  "audioImportFinishedFile": "Datei fertig\n{filename}"
+  "audioImportFinishedFile": "Datei fertig\n{filename}",
+  "hearingStatsAllKids": "Alle Kinder",
+  "hearingStatsLabel": "Statistik:"
 }

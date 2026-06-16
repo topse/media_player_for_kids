@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:cross_file/cross_file.dart';
@@ -8,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:watch_it/watch_it.dart';
 
 import 'audio_import_util.dart';
+import 'hearing_stats_service.dart';
 import 'media_base_header.dart';
 import 'package:shared/shared.dart';
 
@@ -27,16 +27,20 @@ typedef ImportModeSelection = ({
   bool hidden,
 });
 
+enum _HiddenFilter { all, onlyVisible, onlyHidden }
+
 class MediaFolderDetail extends StatefulWidget {
   final MediaFolder folder;
   final ViewResult? lastViewResult;
   final Function(MediaBase item)? selectNode;
+  final Map<String, ItemStats>? hearingStats;
 
   const MediaFolderDetail({
     super.key,
     required this.folder,
     this.lastViewResult,
     this.selectNode,
+    this.hearingStats,
   });
 
   @override
@@ -48,6 +52,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
 
   bool _dragging = false;
   List<ViewEntry>? _localChildren;
+  _HiddenFilter _hiddenFilter = _HiddenFilter.all;
 
   @override
   void didUpdateWidget(covariant MediaFolderDetail oldWidget) {
@@ -666,7 +671,7 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
         content: Text(
           isFolder
               ? '${l10n.companionDeleteOneConfirm(kind, doc.name)} '
-                  '${l10n.folderDetailDeleteWithContents}'
+                    '${l10n.folderDetailDeleteWithContents}'
               : l10n.companionDeleteOneConfirm(kind, doc.name),
         ),
         actions: [
@@ -688,53 +693,21 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
     if (confirmed != true || !mounted) return;
 
     try {
-      await _deleteNodeRecursive(di<DartCouchDb>(), doc);
+      await doc.delete(di<DartCouchDb>());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(l10n.folderDetailDeletedSnack(doc.name))),
+          SnackBar(content: Text(l10n.folderDetailDeletedSnack(doc.name))),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content:
-                  Text(l10n.folderDetailDeleteErrorSnack(e.toString()))),
+            content: Text(l10n.folderDetailDeleteErrorSnack(e.toString())),
+          ),
         );
       }
     }
-  }
-
-  /// Recursively deletes [node] and all its descendants.
-  /// For [MediaItem] nodes, also deletes associated [MediaTrack] documents.
-  Future<void> _deleteNodeRecursive(DartCouchDb db, MediaBase node) async {
-    if (node is MediaFolder) {
-      // Query all direct children from the view.
-      final childrenResult = await db.query(
-        'mediatree/by_parent',
-        includeDocs: true,
-        startkey: '[${jsonEncode(node.id)}]',
-        endkey: '[${jsonEncode(node.id)},{}]',
-      );
-      if (childrenResult != null) {
-        for (final row in childrenResult.rows) {
-          if (row.doc is MediaBase) {
-            await _deleteNodeRecursive(db, row.doc as MediaBase);
-          }
-        }
-      }
-    } else if (node is MediaItem) {
-      // Delete all MediaTrack docs referenced by this item.
-      for (final media in node.media) {
-        final trackDoc = await db.get(media.attachmentId);
-        if (trackDoc != null) {
-          await db.remove(trackDoc.id!, trackDoc.rev!);
-        }
-      }
-    }
-    // Delete the node itself.
-    await db.remove(node.id!, node.rev!);
   }
 
   Future<void> _handleDroppedFiles(DropDoneDetails details) async {
@@ -779,10 +752,11 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
 
     if (allFiles.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(
-            content: Text(SharedL10n.of(context).folderDetailNoAudioFilesFound)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(SharedL10n.of(context).folderDetailNoAudioFilesFound),
+          ),
+        );
       }
       return;
     }
@@ -906,7 +880,8 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
     if (newId == null || newRev == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(SharedL10n.of(context).folderDetailErrorCreatingItem)),
+          content: Text(SharedL10n.of(context).folderDetailErrorCreatingItem),
+        ),
       );
       return;
     }
@@ -922,8 +897,10 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
     if (result.attachments.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(
-                SharedL10n.of(context).folderDetailNoValidAudioImported)),
+          content: Text(
+            SharedL10n.of(context).folderDetailNoValidAudioImported,
+          ),
+        ),
       );
       return;
     }
@@ -1023,11 +1000,13 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
 
     progress.close();
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
         content: Text(
-            SharedL10n.of(context).folderDetailImportedItems(successCount))));
+          SharedL10n.of(context).folderDetailImportedItems(successCount),
+        ),
+      ),
+    );
   }
 
   Future<void> _importFoldersAsItems(
@@ -1103,15 +1082,23 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(SharedL10n.of(context)
-            .folderDetailImportedFolders(successCount)),
+        content: Text(
+          SharedL10n.of(context).folderDetailImportedFolders(successCount),
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final children = _localChildren ?? _children;
+    final allChildren = _localChildren ?? _children;
+    final children = switch (_hiddenFilter) {
+      _HiddenFilter.all => allChildren,
+      _HiddenFilter.onlyHidden =>
+        allChildren.where((row) => (row.doc as MediaBase).hidden).toList(),
+      _HiddenFilter.onlyVisible =>
+        allChildren.where((row) => !(row.doc as MediaBase).hidden).toList(),
+    };
     final effectivelyNewById = buildEffectiveIsNewMap(_allDocuments);
 
     return Column(
@@ -1136,6 +1123,34 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                 },
               ),
               Text(SharedL10n.of(context).folderDetailShowChildNumbering),
+              const SizedBox(width: 24),
+              SegmentedButton<_HiddenFilter>(
+                segments: [
+                  ButtonSegment(
+                    value: _HiddenFilter.all,
+                    label: Text(SharedL10n.of(context).folderDetailFilterAll),
+                  ),
+                  ButtonSegment(
+                    value: _HiddenFilter.onlyVisible,
+                    label: Text(
+                      SharedL10n.of(context).folderDetailFilterOnlyVisible,
+                    ),
+                  ),
+                  ButtonSegment(
+                    value: _HiddenFilter.onlyHidden,
+                    label: Text(
+                      SharedL10n.of(context).folderDetailFilterOnlyHidden,
+                    ),
+                  ),
+                ],
+                selected: {_hiddenFilter},
+                onSelectionChanged: (sel) =>
+                    setState(() => _hiddenFilter = sel.first),
+                style: const ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
             ],
           ),
         ),
@@ -1172,7 +1187,12 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                       )
                     : ReorderableListView.builder(
                         itemCount: children.length,
+                        buildDefaultDragHandles:
+                            _hiddenFilter == _HiddenFilter.all,
                         onReorderItem: (oldIndex, newIndex) async {
+                          // Reordering is disabled when a filter is active
+                          // because filtered indices don't map to the full list.
+                          if (_hiddenFilter != _HiddenFilter.all) return;
                           setState(() {
                             _localChildren ??= List<ViewEntry>.from(_children);
                             final item = _localChildren!.removeAt(oldIndex);
@@ -1204,9 +1224,15 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                           final baseSubtitle = doc is MediaItem
                               ? '${doc.media.length} media file(s)'
                               : 'Folder';
-                          final subtitleText = visibilityInfo != null
-                              ? '$baseSubtitle · $visibilityInfo'
-                              : baseSubtitle;
+                          final stats = subtreeHearingStats(
+                            doc,
+                            widget.hearingStats,
+                            _allDocuments,
+                          );
+                          final subtitleText = [
+                            baseSubtitle,
+                            if (visibilityInfo != null) visibilityInfo,
+                          ].join(' · ');
                           final textColor = isRestricted ? Colors.grey : null;
 
                           return ListTile(
@@ -1223,7 +1249,9 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                                 showTypeBadge: true,
                                 isNew: effectivelyNewById[doc.id] ?? false,
                                 showNewStar: false,
-                                constraintBadgeColor: _constraintBadgeColor(doc),
+                                constraintBadgeColor: _constraintBadgeColor(
+                                  doc,
+                                ),
                               ),
                             ),
                             title: Row(
@@ -1254,9 +1282,16 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                                 ),
                               ],
                             ),
-                            subtitle: Text(
-                              subtitleText,
-                              style: TextStyle(color: textColor),
+                            subtitle: Wrap(
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 6,
+                              children: [
+                                Text(
+                                  subtitleText,
+                                  style: TextStyle(color: textColor),
+                                ),
+                                if (!stats.isEmpty) StatsChip(stats: stats),
+                              ],
                             ),
                             trailing: SizedBox(
                               width: 232,

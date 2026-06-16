@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dart_couch/dart_couch.dart';
 import 'package:dart_mappable/dart_mappable.dart';
 
@@ -203,6 +205,33 @@ class PlayPosition extends CouchDocumentBase with PlayPositionMappable {
     super.revsInfo,
     super.unmappedProps,
   });
+
+  /// Removes every entry keyed by one of [itemIds] from all replicated
+  /// `playposition-<deviceUuid>` documents (one per device). Lists the
+  /// per-device documents and rewrites only those that actually referenced a
+  /// removed item. Idempotent; a no-op when [itemIds] is empty.
+  ///
+  /// Used by the catalog cascade delete ([MediaBase.delete]) to honour the
+  /// companion contract that deleting an item must drop its resume position
+  /// immediately, rather than waiting for the startup repair sweep.
+  static Future<void> purgeItems(DartCouchDb db, Set<String> itemIds) async {
+    if (itemIds.isEmpty) return;
+    final result = await db.allDocs(
+      startkey: jsonEncode('playposition-'),
+      endkey: jsonEncode('playposition-\u{ffff}'),
+      includeDocs: true,
+    );
+    for (final row in result.rows) {
+      final doc = row.doc;
+      if (doc is! PlayPosition) continue;
+      final filtered = <String, PlayPositionItem>{
+        for (final e in doc.items.entries)
+          if (!itemIds.contains(e.key)) e.key: e.value,
+      };
+      if (filtered.length == doc.items.length) continue;
+      await db.put(doc.copyWith(items: filtered));
+    }
+  }
 }
 
 // ── Device identity ──────────────────────────────────────────────────────────
