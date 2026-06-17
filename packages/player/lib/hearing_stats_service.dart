@@ -56,10 +56,15 @@ class HearingStatsService extends ChangeNotifier {
 
   String? _deviceUuid;
 
-  /// Serialises all [_persistPlayLog] calls to avoid CouchDB 409 conflicts
-  /// when two persists race (e.g. recordPlayStart fires immediately and
-  /// recordPlayStop fires a moment later before the first write completes).
-  Future<void> _persistChain = Future.value();
+  /// Owns persistence, rev-currency, own-write detection and the change-stream
+  /// subscription for the `playlog-<uuid>` document. Created in [init].
+  /// [_statsById] is the in-memory source of truth for fast constraint
+  /// evaluation; each persist builds a [PlayLog] snapshot of it inside the
+  /// writer's build closure (rev-safe and coalesced) — no second copy of the
+  /// document is held here. [_onPlayLogExternalChange] reloads [_statsById] when
+  /// the document changes underneath us (companion purge, admin wipe, another
+  /// device).
+  SaveDocWriter? _writer;
 
   // ── Active session state ──────────────────────────────────────────────────
 
@@ -79,10 +84,6 @@ class HearingStatsService extends ChangeNotifier {
   /// minimum-play threshold. Drives new-flag clearing and position-save
   /// decisions independently of the latest (possibly short) segment.
   bool _sessionHadValidSegment = false;
-
-  // Tracks the latest known _rev for conflict-free writes.
-  String? _latestPlayLogRev;
-  StreamSubscription<dynamic>? _playlogSub;
 
   // ── Global constraint ─────────────────────────────────────────────────────
 
@@ -104,57 +105,19 @@ class HearingStatsService extends ChangeNotifier {
     _deviceUuid = deviceUuid;
     _log.info('Initialising HearingStatsService for device $deviceUuid');
 
-    final db = di<DartCouchDb>();
     final docId = PlayLog.docIdFor(deviceUuid);
-
-    try {
-      final doc = await db.get(docId);
-      if (doc != null) {
-        final playLog = doc as PlayLog;
-        _latestPlayLogRev = playLog.rev;
-        _loadFromPlayLog(playLog);
-        _log.info('Loaded playlog: ${playLog.items.length} item(s)');
-      } else {
-        _log.info('No playlog document found — starting fresh');
-      }
-    } catch (e) {
-      _log.warning('Failed to load playlog: $e');
-    }
-
-    // Subscribe to changes — reacts to external deletions and updates.
-    // Own writes are identified by rev: after db.put we store the returned rev,
-    // so any emission with that same rev is ours and can be skipped.
-    _playlogSub = db.useDoc(docId).listen((doc) {
-      if (doc == null) {
-        // Document deleted externally (e.g. admin wiped it on the server).
-        if (_latestPlayLogRev != null) {
-          _log.info('Playlog deleted externally — clearing in-memory state');
-          _latestPlayLogRev = null;
-          final activeId = _activeItemId;
-          _statsById.clear();
-          if (activeId != null) {
-            // Preserve the in-progress session so it gets recorded on next persist.
-            final event = PlayEvent(startedAt: _activeEventStartedAt);
-            _statsById[activeId] = HearingStats(
-              itemId: activeId,
-              title: _activeItemTitle,
-              playEvents: [event],
-            );
-            _dirty = true;
-          } else {
-            _dirty = false;
-          }
-          _notifyDeferred();
-        }
-      } else if (doc.rev != _latestPlayLogRev) {
-        // Different rev → external update (e.g. another device wrote to this doc).
-        _log.info('Playlog updated externally (rev ${doc.rev}) — reloading');
-        _latestPlayLogRev = doc.rev;
-        _loadFromPlayLog(doc as PlayLog);
-        _notifyDeferred();
-      }
-      // Same rev as our last write → our own write echoed back, nothing to do.
-    });
+    final writer = di<DocStore>().writer(docId);
+    // React to external changes (companion purge, admin wipe, another device);
+    // own writes are handled rev-aware inside the writer and never call back.
+    writer.onExternalChange = _onPlayLogExternalChange;
+    final loaded = await writer.start();
+    _writer = writer;
+    // Populate the in-memory eval cache from the loaded document.
+    final playLog = loaded is PlayLog
+        ? loaded
+        : PlayLog(id: docId, deviceId: deviceUuid);
+    _loadFromPlayLog(playLog);
+    _log.info('Loaded playlog: ${playLog.items.length} item(s)');
 
     // Archive old events into playlog_archive document.
     await _archiveAndPrune();
@@ -172,11 +135,13 @@ class HearingStatsService extends ChangeNotifier {
       final itemId = entry.key;
       final item = entry.value;
       final events = item.events
-          .map((e) => PlayEvent(
-                startedAt: e.startedAt,
-                durationMs: e.durationMs,
-                playCountFraction: e.playCountFraction,
-              ))
+          .map(
+            (e) => PlayEvent(
+              startedAt: e.startedAt,
+              durationMs: e.durationMs,
+              playCountFraction: e.playCountFraction,
+            ),
+          )
           .toList();
       _statsById[itemId] = HearingStats(
         itemId: itemId,
@@ -193,14 +158,9 @@ class HearingStatsService extends ChangeNotifier {
   /// the global hearing constraint. Returns `null` when no play events exist
   /// (fail-open, consistent with EC-08).
   HearingStats? globalStats() {
-    final allEvents = _statsById.values
-        .expand((s) => s.playEvents)
-        .toList();
+    final allEvents = _statsById.values.expand((s) => s.playEvents).toList();
     if (allEvents.isEmpty) return null;
-    return HearingStats(
-      itemId: '_global',
-      playEvents: allEvents,
-    );
+    return HearingStats(itemId: '_global', playEvents: allEvents);
   }
 
   /// Whether the current session has had at least one contiguous play segment
@@ -246,8 +206,10 @@ class HearingStatsService extends ChangeNotifier {
   }) {
     // Finalise any previous session that was not properly stopped.
     if (_activeItemId != null && _activeItemId != itemId) {
-      _log.info('Finalising stale session for $_activeItemId '
-          'before starting $itemId');
+      _log.info(
+        'Finalising stale session for $_activeItemId '
+        'before starting $itemId',
+      );
       _finaliseSession();
     }
 
@@ -262,13 +224,13 @@ class HearingStatsService extends ChangeNotifier {
     _sessionHadValidSegment = false;
     _dirty = true;
 
-    _log.info('Play start: "$itemTitle" ($itemId), '
-        'totalDuration=${totalItemDurationMs}ms');
+    _log.info(
+      'Play start: "$itemTitle" ($itemId), '
+      'totalDuration=${totalItemDurationMs}ms',
+    );
 
     // Create the initial event.
-    final event = PlayEvent(
-      startedAt: _activeEventStartedAt,
-    );
+    final event = PlayEvent(startedAt: _activeEventStartedAt);
 
     final existing = _statsById[itemId];
     if (existing != null) {
@@ -347,7 +309,6 @@ class HearingStatsService extends ChangeNotifier {
       // Larger jumps indicate seeks and should not be counted as play time.
       _accumulatedPlayMs += deltaMs;
       _dirty = true;
-
     }
 
     _lastKnownPosition = position;
@@ -368,13 +329,17 @@ class HearingStatsService extends ChangeNotifier {
     if (_activeItemId != itemId || _sessionCompleted) return;
 
     if (_currentSegmentMeetsThreshold()) {
-      _log.info('Seek: finalising segment as event '
-          '(${_accumulatedPlayMs}ms)');
+      _log.info(
+        'Seek: finalising segment as event '
+        '(${_accumulatedPlayMs}ms)',
+      );
       _updateActiveEvent(itemId);
       _sessionHadValidSegment = true;
     } else {
-      _log.info('Seek: discarding short segment '
-          '(${_accumulatedPlayMs}ms) for $itemId');
+      _log.info(
+        'Seek: discarding short segment '
+        '(${_accumulatedPlayMs}ms) for $itemId',
+      );
       _discardActiveEvent(itemId);
     }
 
@@ -420,8 +385,10 @@ class HearingStatsService extends ChangeNotifier {
     final fraction = _totalItemDurationMs > 0
         ? (_accumulatedPlayMs / _totalItemDurationMs).clamp(0.0, 1.0)
         : 0.0;
-    _log.info('Play completed: "$_activeItemTitle" ($itemId), '
-        'duration=${_accumulatedPlayMs}ms, fraction=${fraction.toStringAsFixed(2)}');
+    _log.info(
+      'Play completed: "$_activeItemTitle" ($itemId), '
+      'duration=${_accumulatedPlayMs}ms, fraction=${fraction.toStringAsFixed(2)}',
+    );
 
     _notifyDeferred();
     await _persistPlayLog();
@@ -441,8 +408,10 @@ class HearingStatsService extends ChangeNotifier {
     final fraction = _totalItemDurationMs > 0
         ? (_accumulatedPlayMs / _totalItemDurationMs).clamp(0.0, 1.0)
         : 0.0;
-    _log.info('Play stopped: "$_activeItemTitle" ($itemId), '
-        'duration=${_accumulatedPlayMs}ms, fraction=${fraction.toStringAsFixed(2)}');
+    _log.info(
+      'Play stopped: "$_activeItemTitle" ($itemId), '
+      'duration=${_accumulatedPlayMs}ms, fraction=${fraction.toStringAsFixed(2)}',
+    );
 
     _finaliseSession();
   }
@@ -468,8 +437,10 @@ class HearingStatsService extends ChangeNotifier {
       _updateActiveEvent(itemId);
       _sessionHadValidSegment = true;
     } else {
-      _log.info('Final segment too short (${_accumulatedPlayMs}ms) — '
-          'discarding event for $itemId');
+      _log.info(
+        'Final segment too short (${_accumulatedPlayMs}ms) — '
+        'discarding event for $itemId',
+      );
       _discardActiveEvent(itemId);
     }
     _dirty = true;
@@ -494,7 +465,8 @@ class HearingStatsService extends ChangeNotifier {
 
     // If the item is shorter than the threshold it auto-passes — the child
     // must have heard most of it to reach the end at all.
-    final thresholdMs = (_totalItemDurationMs > 0 && _totalItemDurationMs < configuredMs)
+    final thresholdMs =
+        (_totalItemDurationMs > 0 && _totalItemDurationMs < configuredMs)
         ? _totalItemDurationMs
         : configuredMs;
 
@@ -560,51 +532,76 @@ class HearingStatsService extends ChangeNotifier {
 
   // ── Internal: persistence ──────────────────────────────────────────────────
 
-  /// Builds a [PlayLog] from the in-memory stats and writes it to CouchDB.
-  /// Calls are serialised via [_persistChain] to prevent concurrent writes
-  /// racing on the same CouchDB `_rev` and causing 409 conflicts.
+  /// Persists a snapshot of the in-memory [_statsById] through the
+  /// [SaveDocWriter].
+  ///
+  /// Fire-and-forget: the writer coalesces rapid calls into a single rev-safe
+  /// put and retries on conflict. Callers that must block until the write has
+  /// landed `await` the returned future ([SaveDocWriter.settle]); the rest
+  /// ignore it. The build closure constructs a fresh [PlayLog] from the current
+  /// [_statsById], stamped with the writer's latest rev — so no second copy of
+  /// the document is held, and on a conflict retry it is simply rebuilt from the
+  /// (possibly reloaded) stats against the fresh rev. Replaces the old
+  /// hand-rolled `_persistChain` + `_rev` tracking.
   Future<void> _persistPlayLog() {
-    _persistChain = _persistChain.then((_) => _doPersistPlayLog());
-    return _persistChain;
+    final uuid = _deviceUuid;
+    final writer = _writer;
+    if (uuid == null || writer == null) return Future.value();
+    writer.save(
+      (rev) => PlayLog(
+        id: PlayLog.docIdFor(uuid),
+        deviceId: uuid,
+        items: _buildItems(),
+        rev: rev,
+      ),
+    );
+    _dirty = false;
+    return writer.settle();
   }
 
-  Future<void> _doPersistPlayLog() async {
-    final uuid = _deviceUuid;
-    if (uuid == null) return;
-
-    // Build playlog items map from in-memory stats.
+  /// Builds the playlog item map from the in-memory stats. Invoked at write
+  /// time (inside the persist mutation), so the persisted snapshot reflects the
+  /// latest [_statsById] — matching the previous "build from stats on persist"
+  /// model.
+  Map<String, PlayLogItem> _buildItems() {
     final items = <String, PlayLogItem>{};
     for (final entry in _statsById.entries) {
-      final itemId = entry.key;
       final stats = entry.value;
-      items[itemId] = PlayLogItem(
+      items[entry.key] = PlayLogItem(
         title: stats.title,
         events: stats.playEvents
-            .map((e) => PlayLogEvent(
-                  startedAt: e.startedAt,
-                  durationMs: e.durationMs,
-                  playCountFraction: e.playCountFraction,
-                ))
+            .map(
+              (e) => PlayLogEvent(
+                startedAt: e.startedAt,
+                durationMs: e.durationMs,
+                playCountFraction: e.playCountFraction,
+              ),
+            )
             .toList(),
       );
     }
+    return items;
+  }
 
-    final playLog = PlayLog(
-      id: PlayLog.docIdFor(uuid),
-      deviceId: uuid,
-      items: items,
-      rev: _latestPlayLogRev,
-    );
-
-    try {
-      final db = di<DartCouchDb>();
-      final saved = await db.put(playLog);
-      _latestPlayLogRev = saved.rev;
-      _dirty = false;
-      _log.fine('Persisted playlog (${items.length} item(s))');
-    } catch (e) {
-      _log.warning('Failed to persist playlog: $e');
+  /// Reloads [_statsById] when the playlog document changes externally — a
+  /// companion purge after a catalog deletion, an admin wipe (null doc), or
+  /// another device writing to it. Mirrors the previous `useDoc` external/delete
+  /// branches: reload from the external truth, and if that dropped the active
+  /// session's item (e.g. the document was deleted), re-seed a fresh in-progress
+  /// event so it is still recorded on the next persist.
+  void _onPlayLogExternalChange(CouchDocumentBase? doc) {
+    final playLog = doc is PlayLog ? doc : PlayLog(deviceId: _deviceUuid ?? '');
+    _loadFromPlayLog(playLog);
+    final activeId = _activeItemId;
+    if (activeId != null && _statsById[activeId] == null) {
+      _statsById[activeId] = HearingStats(
+        itemId: activeId,
+        title: _activeItemTitle,
+        playEvents: [PlayEvent(startedAt: _activeEventStartedAt)],
+      );
+      _dirty = true;
     }
+    _notifyDeferred();
   }
 
   // ── Internal: archival ─────────────────────────────────────────────────────
@@ -616,8 +613,9 @@ class HearingStatsService extends ChangeNotifier {
     final uuid = _deviceUuid;
     if (uuid == null) return;
 
-    final cutoff =
-        DateTime.now().subtract(const Duration(days: _pruneOlderThanDays));
+    final cutoff = DateTime.now().subtract(
+      const Duration(days: _pruneOlderThanDays),
+    );
     final oldEvents = <String, ({List<PlayEvent> events, String title})>{};
 
     // Separate old events from recent ones.
@@ -646,79 +644,73 @@ class HearingStatsService extends ChangeNotifier {
 
     _log.info('Archiving old events for ${oldEvents.length} item(s)');
 
-    // Load existing archive.
-    PlayLogArchive archive;
-    try {
-      final db = di<DartCouchDb>();
-      final doc = await db.get(PlayLogArchive.docIdFor(uuid));
-      archive = (doc as PlayLogArchive?) ?? PlayLogArchive(deviceId: uuid);
-    } catch (e) {
-      _log.warning('Failed to load archive: $e');
-      archive = PlayLogArchive(deviceId: uuid);
-    }
+    // Read-modify-write the archive rev-safely: load the existing archive,
+    // aggregate the old events into it, and put — retrying on conflict (the
+    // archive is otherwise only touched at startup, so a one-shot update is the
+    // right tool rather than a long-lived writer).
+    final saved = await di<DocStore>().update<PlayLogArchive>(
+      PlayLogArchive.docIdFor(uuid),
+      (current) {
+        final base = current ?? PlayLogArchive(deviceId: uuid);
+        final archiveItems = Map<String, PlayLogArchiveItem>.from(base.items);
+        for (final entry in oldEvents.entries) {
+          final itemId = entry.key;
+          final (:events, :title) = entry.value;
+          final existing = archiveItems[itemId] ?? const PlayLogArchiveItem();
 
-    // Aggregate old events into the archive.
-    final archiveItems = Map<String, PlayLogArchiveItem>.from(archive.items);
-    for (final entry in oldEvents.entries) {
-      final itemId = entry.key;
-      final (:events, :title) = entry.value;
-      final existing = archiveItems[itemId] ?? const PlayLogArchiveItem();
+          int totalPlayCount = existing.totalPlayCount;
+          int totalDurationMs = existing.totalDurationMs;
+          String firstPlayed = existing.firstPlayed;
+          String lastPlayed = existing.lastPlayed;
+          // Use the current item title (already up to date via _refreshTitle).
+          String archiveTitle = title.isNotEmpty ? title : existing.title;
+          final monthly = Map<String, PlayLogMonthlyBucket>.from(
+            existing.monthly,
+          );
 
-      int totalPlayCount = existing.totalPlayCount;
-      int totalDurationMs = existing.totalDurationMs;
-      String firstPlayed = existing.firstPlayed;
-      String lastPlayed = existing.lastPlayed;
-      // Use the current item title (already up to date via _refreshTitle).
-      String archiveTitle = title.isNotEmpty ? title : existing.title;
-      final monthly = Map<String, PlayLogMonthlyBucket>.from(existing.monthly);
+          for (final e in events) {
+            totalPlayCount++;
+            totalDurationMs += e.durationMs;
 
-      for (final e in events) {
-        totalPlayCount++;
-        totalDurationMs += e.durationMs;
+            // First/last played.
+            if (firstPlayed.isEmpty || e.startedAt.compareTo(firstPlayed) < 0) {
+              firstPlayed = e.startedAt;
+            }
+            if (lastPlayed.isEmpty || e.startedAt.compareTo(lastPlayed) > 0) {
+              lastPlayed = e.startedAt;
+            }
 
-        // First/last played.
-        if (firstPlayed.isEmpty || e.startedAt.compareTo(firstPlayed) < 0) {
-          firstPlayed = e.startedAt;
+            // Monthly bucket.
+            final dt = DateTime.parse(e.startedAt);
+            final monthKey =
+                '${dt.year}-${dt.month.toString().padLeft(2, '0')}';
+            final bucket = monthly[monthKey] ?? const PlayLogMonthlyBucket();
+            monthly[monthKey] = PlayLogMonthlyBucket(
+              playCount: bucket.playCount + 1,
+              durationMs: bucket.durationMs + e.durationMs,
+            );
+          }
+
+          archiveItems[itemId] = PlayLogArchiveItem(
+            totalPlayCount: totalPlayCount,
+            totalDurationMs: totalDurationMs,
+            firstPlayed: firstPlayed,
+            lastPlayed: lastPlayed,
+            title: archiveTitle,
+            monthly: monthly,
+          );
         }
-        if (lastPlayed.isEmpty || e.startedAt.compareTo(lastPlayed) > 0) {
-          lastPlayed = e.startedAt;
-        }
 
-        // Monthly bucket.
-        final dt = DateTime.parse(e.startedAt);
-        final monthKey =
-            '${dt.year}-${dt.month.toString().padLeft(2, '0')}';
-        final bucket = monthly[monthKey] ?? const PlayLogMonthlyBucket();
-        monthly[monthKey] = PlayLogMonthlyBucket(
-          playCount: bucket.playCount + 1,
-          durationMs: bucket.durationMs + e.durationMs,
+        return PlayLogArchive(
+          id: PlayLogArchive.docIdFor(uuid),
+          deviceId: uuid,
+          items: archiveItems,
+          rev: base.rev,
         );
-      }
-
-      archiveItems[itemId] = PlayLogArchiveItem(
-        totalPlayCount: totalPlayCount,
-        totalDurationMs: totalDurationMs,
-        firstPlayed: firstPlayed,
-        lastPlayed: lastPlayed,
-        title: archiveTitle,
-        monthly: monthly,
-      );
-    }
-
-    archive = PlayLogArchive(
-      id: PlayLogArchive.docIdFor(uuid),
-      deviceId: uuid,
-      items: archiveItems,
-      rev: archive.rev,
+      },
     );
-
-    // Persist archive.
-    try {
-      final db = di<DartCouchDb>();
-      await db.put(archive);
+    if (saved != null) {
       _log.info('Archived ${oldEvents.length} item(s) into playlog_archive');
-    } catch (e) {
-      _log.warning('Failed to persist archive: $e');
     }
 
     // Persist pruned playlog.
@@ -736,8 +728,10 @@ class HearingStatsService extends ChangeNotifier {
       final doc = await db.get(GlobalConstraints.docId);
       if (doc != null) {
         _globalConstraint = (doc as GlobalConstraints).hearingConstraint;
-        _log.info('Loaded global constraint: '
-            '${_globalConstraint != null ? "active" : "none"}');
+        _log.info(
+          'Loaded global constraint: '
+          '${_globalConstraint != null ? "active" : "none"}',
+        );
       } else {
         _log.info('No global-constraints document — no global constraint');
       }
@@ -746,8 +740,7 @@ class HearingStatsService extends ChangeNotifier {
     }
 
     _globalConstraintsSub = db.useDoc(GlobalConstraints.docId).listen((doc) {
-      final newConstraint =
-          (doc as GlobalConstraints?)?.hearingConstraint;
+      final newConstraint = (doc as GlobalConstraints?)?.hearingConstraint;
       if (newConstraint != _globalConstraint) {
         _log.info('Global constraint changed via CouchDB subscription');
         _globalConstraint = newConstraint;
@@ -759,7 +752,8 @@ class HearingStatsService extends ChangeNotifier {
   @override
   void dispose() {
     _globalConstraintsSub?.cancel();
-    _playlogSub?.cancel();
+    // The writer's lifetime is owned by [DocStore]; just detach our callback.
+    _writer?.onExternalChange = null;
     _persistTimer?.cancel();
     _refreshTimer?.cancel();
     liveTicker.dispose();

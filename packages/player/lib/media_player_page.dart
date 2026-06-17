@@ -12,7 +12,8 @@ import 'package:player/hearing_stats_service.dart';
 import 'package:player/play_position_service.dart';
 import 'package:player/widgets/media_app_bar.dart';
 import 'package:shared/models/datatypes.dart' as models;
-import 'package:shared/shared.dart' show ConstraintEvaluator, ConstraintStatus, MediaBaseIcon, SharedL10n;
+import 'package:shared/shared.dart'
+    show ConstraintEvaluator, ConstraintStatus, MediaBaseIcon, SharedL10n;
 import 'package:watch_it/watch_it.dart';
 
 final _log = Logger('media_player_page');
@@ -56,16 +57,18 @@ class MediaPlayerPage extends StatefulWidget {
 
 class _MediaPlayerPageState extends State<MediaPlayerPage>
     with WidgetsBindingObserver {
-
   late AudioPlayerService _audioService;
   late Map<String, models.MediaBase> _liveDocuments;
   bool _isLoading = true;
   bool _completedNaturally = false;
   int _totalItemDurationMs = 0;
+
   /// Cumulative start time (ms) of each track within the audiobook, so the
   /// audiobook slider can map a global position to a (track, local-position)
   /// pair and paint chapter markers at the file boundaries.
-  late final List<int> _cumulativeTrackStartsMs = _computeCumulativeTrackStarts();
+  late final List<int> _cumulativeTrackStartsMs =
+      _computeCumulativeTrackStarts();
+
   /// While the kid is dragging the audiobook slider, this holds the thumb
   /// position in ms so the slider follows the finger smoothly. The actual
   /// (potentially cross-track) seek runs only on release in [onChangeEnd] —
@@ -104,7 +107,12 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
     if (!di<HearingStatsService>().meetsMinimumPlayThreshold()) return;
     final current = _liveDocuments[widget.item.id!] ?? widget.item;
     if (current is! models.MediaItem || !current.isNew) return;
-    di<DartCouchDb>().put(current.copyWith(isNew: false));
+    // Rev-safe one-shot: refetches the freshest item and retries on conflict,
+    // so a replication update mid-listen can't make this lose to a 409.
+    di<DocStore>().update<models.MediaItem>(
+      current.id!,
+      (cur) => cur?.copyWith(isNew: false),
+    );
   }
 
   /// True when the singleton [AudioPlayerService] is currently loaded with
@@ -183,10 +191,7 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
     }
   }
 
-  bool _isItemOrAncestorHidden(
-    String id,
-    Map<String, models.MediaBase> byId,
-  ) {
+  bool _isItemOrAncestorHidden(String id, Map<String, models.MediaBase> byId) {
     String? current = id;
     while (current != null) {
       final doc = byId[current];
@@ -235,16 +240,19 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
 
     // Pop the page if this item (or any ancestor folder) becomes hidden.
     // Also update _liveDocuments so constraint re-evaluation uses fresh data.
-    _dbSubscription = di<DartCouchDb>()
-        .useAllDocs(includeDocs: true)
-        .listen((result) {
+    _dbSubscription = di<DartCouchDb>().useAllDocs(includeDocs: true).listen((
+      result,
+    ) {
       if (!mounted) return;
       final docs = result?.rows
           .map((e) => e.doc)
           .whereType<models.MediaBase>()
           .toList();
       if (docs == null) return;
-      final byId = {for (final d in docs) if (d.id != null) d.id!: d};
+      final byId = {
+        for (final d in docs)
+          if (d.id != null) d.id!: d,
+      };
       if (_isItemOrAncestorHidden(widget.item.id!, byId)) {
         _audioService.stop();
         Navigator.of(context).pop();
@@ -311,8 +319,10 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
       }
 
       // P-02: recordPlayStart only AFTER the constraint check has passed.
-      _totalItemDurationMs = widget.item.media
-          .fold<int>(0, (sum, t) => sum + t.durationMs);
+      _totalItemDurationMs = widget.item.media.fold<int>(
+        0,
+        (sum, t) => sum + t.durationMs,
+      );
       di<HearingStatsService>().recordPlayStart(
         widget.item.id!,
         totalItemDurationMs: _totalItemDurationMs,
@@ -500,15 +510,19 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
     // grace would let playback loop indefinitely past the limit. Treat
     // remaining as effectively infinite (stop immediately).
     final graceMinutes =
-        di<SharedPreferencesWithCache>().getInt(AdminOverrideService.kGracePeriodMinutes) ??
+        di<SharedPreferencesWithCache>().getInt(
+          AdminOverrideService.kGracePeriodMinutes,
+        ) ??
         AdminOverrideService.defaultGracePeriodMinutes;
     final graceThresholdMs = graceMinutes * 60 * 1000;
     final remainingItemMs = widget.item.repeat ? -1 : _remainingPlaylistMs();
 
     if (remainingItemMs > 0 && remainingItemMs <= graceThresholdMs) {
-      _log.info('Allowance expired but within ${graceMinutes}min grace '
-          '(${remainingItemMs}ms remaining of ${_totalItemDurationMs}ms) '
-          '— allowing completion');
+      _log.info(
+        'Allowance expired but within ${graceMinutes}min grace '
+        '(${remainingItemMs}ms remaining of ${_totalItemDurationMs}ms) '
+        '— allowing completion',
+      );
       return;
     }
 
@@ -686,8 +700,9 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
                                       // current — otherwise its progress is
                                       // lost.
                                       _saveCurrentPosition();
-                                      di<HearingStatsService>()
-                                          .recordSeek(widget.item.id!);
+                                      di<HearingStatsService>().recordSeek(
+                                        widget.item.id!,
+                                      );
                                       _audioService.skipToPrevious();
                                       _scheduleAllowanceTimer();
                                     }
@@ -705,23 +720,27 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
                                 if (widget.item.isAudioBook &&
                                     hasMultipleTracks &&
                                     _totalItemDurationMs > 0) {
-                                  final idx = indexSnapshot.data ??
+                                  final idx =
+                                      indexSnapshot.data ??
                                       _audioService.player.currentIndex ??
                                       0;
                                   final safeIdx = idx.clamp(
-                                      0, _cumulativeTrackStartsMs.length - 1);
+                                    0,
+                                    _cumulativeTrackStartsMs.length - 1,
+                                  );
                                   final playheadMs =
                                       (_cumulativeTrackStartsMs[safeIdx] +
                                               position.inMilliseconds)
                                           .clamp(0, _totalItemDurationMs)
                                           .toDouble();
-                                  final maxMs =
-                                      _totalItemDurationMs.toDouble();
+                                  final maxMs = _totalItemDurationMs.toDouble();
                                   // While dragging, the slider follows the
                                   // finger; otherwise it follows the audio.
                                   final sliderValue =
-                                      (_audiobookDragMs ?? playheadMs)
-                                          .clamp(0.0, maxMs);
+                                      (_audiobookDragMs ?? playheadMs).clamp(
+                                        0.0,
+                                        maxMs,
+                                      );
                                   final displayMs = sliderValue.toInt();
 
                                   return Column(
@@ -729,8 +748,7 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
                                     children: [
                                       SliderTheme(
                                         data: SliderTheme.of(context).copyWith(
-                                          trackShape:
-                                              _ChapterMarkerTrackShape(
+                                          trackShape: _ChapterMarkerTrackShape(
                                             chapterFractions:
                                                 _chapterFractions(),
                                           ),
@@ -794,8 +812,9 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
                                         // resets to 0, so subsequent drag
                                         // ticks won't pass the threshold.
                                         _saveCurrentPosition();
-                                        di<HearingStatsService>()
-                                            .recordSeek(widget.item.id!);
+                                        di<HearingStatsService>().recordSeek(
+                                          widget.item.id!,
+                                        );
                                         _audioService.seek(
                                           Duration(milliseconds: value.toInt()),
                                         );
@@ -820,8 +839,9 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
                               onPressed: hasNext
                                   ? () {
                                       _saveCurrentPosition();
-                                      di<HearingStatsService>()
-                                          .recordSeek(widget.item.id!);
+                                      di<HearingStatsService>().recordSeek(
+                                        widget.item.id!,
+                                      );
                                       _audioService.skipToNext();
                                       _scheduleAllowanceTimer();
                                     }

@@ -161,6 +161,9 @@ class _MainAppState extends State<MainApp> {
                     );
                     if (db != null) {
                       di.registerSingleton<DartCouchDb>(db);
+                      // Central per-document store backing PlayPositionService
+                      // and HearingStatsService (rev-safe, coalesced writes).
+                      di.registerSingleton<DocStore>(DocStore(CouchDocDb(db)));
 
                       // Device identity: generate UUID on first run.
                       final prefs = di<SharedPreferencesWithCache>();
@@ -176,9 +179,12 @@ class _MainAppState extends State<MainApp> {
 
                       // Initialise hearing stats from the playlog document.
                       await di<HearingStatsService>().init(deviceUuid);
-
                     } else {
                       di.unregister<DartCouchDb>();
+                      if (di.isRegistered<DocStore>()) {
+                        di<DocStore>().dispose();
+                        di.unregister<DocStore>();
+                      }
                     }
                   },
                   child: server is OfflineFirstServer
@@ -509,7 +515,8 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
     final prefs = di<SharedPreferencesWithCache>();
     _portraitColumns = prefs.getInt('grid_columns_portrait') ?? 2;
     _landscapeColumns = prefs.getInt('grid_columns_landscape') ?? 4;
-    _minPlaySeconds = prefs.getInt(HearingStatsService.kMinPlaySeconds) ??
+    _minPlaySeconds =
+        prefs.getInt(HearingStatsService.kMinPlaySeconds) ??
         HearingStatsService.defaultMinPlaySeconds;
     _gracePeriodMinutes =
         prefs.getInt(AdminOverrideService.kGracePeriodMinutes) ??
@@ -575,9 +582,7 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
               final changed = await AdminPasswordGate.changePassword(context);
               if (changed && context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(l10n.adminPasswordChangedSnack),
-                  ),
+                  SnackBar(content: Text(l10n.adminPasswordChangedSnack)),
                 );
               }
             },
@@ -655,10 +660,9 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
             child: Text(
               l10n.adminMinPlayDurationDescription,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: Colors.grey),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.grey),
             ),
           ),
           Padding(
@@ -684,10 +688,9 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
             child: Text(
               l10n.adminGracePeriodDescription,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: Colors.grey),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.grey),
             ),
           ),
           Padding(

@@ -261,17 +261,17 @@ packages:
     dependency: transitive
     description:
       path: "packages/dart_couch"
-      ref: "608b552a24203ca574fc58ec7ca469616e00c354"
-      resolved-ref: "608b552a24203ca574fc58ec7ca469616e00c354"
+      ref: "4cb64488c79ef144f60be57e7bc69b54ce10d94a"
+      resolved-ref: "4cb64488c79ef144f60be57e7bc69b54ce10d94a"
       url: "https://github.com/topse/dart_couch"
     source: git
-    version: "1.0.4+1"
+    version: "1.0.6+1"
   dart_couch_widgets:
     dependency: transitive
     description:
       path: "packages/dart_couch_widgets"
       ref: HEAD
-      resolved-ref: "608b552a24203ca574fc58ec7ca469616e00c354"
+      resolved-ref: "4cb64488c79ef144f60be57e7bc69b54ce10d94a"
       url: "https://github.com/topse/dart_couch"
     source: git
     version: "1.0.4+1"
