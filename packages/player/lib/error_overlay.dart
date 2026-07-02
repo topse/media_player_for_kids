@@ -37,11 +37,19 @@ class AppErrorReport {
   });
 }
 
-/// The most recent unhandled error, or `null` when none is showing.
-/// Global (not scoped to a subtree) so an error originating anywhere — even
-/// before the widget tree mounts — is retained until the overlay can paint it.
+/// The **first (root-cause)** unhandled error currently on screen, or `null`
+/// when none is showing. Global (not scoped to a subtree) so an error
+/// originating anywhere — even before the widget tree mounts — is retained
+/// until the overlay can paint it. Deliberately latched: see [_publish].
 final ValueNotifier<AppErrorReport?> appErrorNotifier =
     ValueNotifier<AppErrorReport?>(null);
+
+/// Count of *additional* distinct errors that fired while [appErrorNotifier]
+/// already had a report on screen. A broken state usually throws a cascade
+/// (e.g. the GUI failing to build after a failed bootstrap); we keep the first
+/// error latched and only count the rest so the displayed stack trace doesn't
+/// flip out from under the reader while they scroll it.
+final ValueNotifier<int> suppressedErrorCount = ValueNotifier<int>(0);
 
 /// Installs the global error hooks. Call once in `main()` immediately after
 /// `WidgetsFlutterBinding.ensureInitialized()` and before `runApp()`.
@@ -77,15 +85,37 @@ void installGlobalErrorHandlers() {
       _InlineErrorBox(message: details.exceptionAsString());
 }
 
+/// Public entry point for code that catches an error itself but still wants it
+/// surfaced on screen. Use this where an exception would otherwise be
+/// **swallowed** by a library `try/catch` (notably `DbStateProxyWidget`'s
+/// `onLogin` handler, which eats throws and renders its child against a
+/// half-initialised app — the original "black screen" cause) or where it fires
+/// before `runApp()` and so never reaches a mounted overlay.
+void reportAppError(Object error, StackTrace? stack, {String? context}) {
+  _publish(
+    summary: error.toString(),
+    details: _composeDetails(error, stack, contextLabel: context),
+  );
+}
+
 /// Pushes a report into [appErrorNotifier], deferred to a microtask so we
 /// never mutate the notifier (and thus trigger a listener rebuild) during the
 /// framework's own build/layout phase — which is exactly when a synchronous
-/// error fires. Repeated identical errors (a build that throws every frame)
-/// are coalesced so the panel is not rebuilt on every frame.
+/// error fires.
+///
+/// **Latching:** once a report is showing, later errors do NOT overwrite it —
+/// the first error is almost always the root cause and the rest are fallout
+/// (a build that throws every frame, or the GUI collapsing after a failed
+/// bootstrap). Identical re-fires are ignored; distinct follow-ups bump
+/// [suppressedErrorCount] so the reader still knows more happened. The panel is
+/// cleared (and the count reset) only on explicit dismiss.
 void _publish({required String summary, required String details}) {
   scheduleMicrotask(() {
     final current = appErrorNotifier.value;
-    if (current != null && current.details == details) return;
+    if (current != null) {
+      if (current.details != details) suppressedErrorCount.value++;
+      return;
+    }
     appErrorNotifier.value = AppErrorReport(
       summary: summary,
       details: details,
@@ -132,9 +162,20 @@ class GlobalErrorOverlay extends StatelessWidget {
             builder: (context, report, _) {
               if (report == null) return const SizedBox.shrink();
               return Positioned.fill(
-                child: _ErrorPanel(
-                  report: report,
-                  onDismiss: () => appErrorNotifier.value = null,
+                // Absorb every pointer so taps on empty panel areas can't fall
+                // through to the (often broken) UI underneath and trigger a
+                // fresh cascade of errors — the cause of the panel appearing to
+                // "change on tap".
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {},
+                  child: _ErrorPanel(
+                    report: report,
+                    onDismiss: () {
+                      appErrorNotifier.value = null;
+                      suppressedErrorCount.value = 0;
+                    },
+                  ),
                 ),
               );
             },
@@ -175,6 +216,24 @@ class _ErrorPanel extends StatelessWidget {
               Text(
                 report.time.toIso8601String(),
                 style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              ValueListenableBuilder<int>(
+                valueListenable: suppressedErrorCount,
+                builder: (context, count, _) {
+                  if (count == 0) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      '+ $count weitere Fehler unterdrückt '
+                      '(der erste wird gezeigt)',
+                      style: const TextStyle(
+                        color: Colors.orangeAccent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 12),
               SelectableText(

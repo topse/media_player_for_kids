@@ -29,6 +29,19 @@ void main() async {
   // Surface unhandled errors on-device (logs aren't reachable on the target).
   // Must be installed before anything can throw asynchronously.
   installGlobalErrorHandlers();
+  // A throw anywhere in bootstrap means runApp() is never reached and the
+  // overlay has nothing to paint into -> black screen. Catch it, report it,
+  // and bring up a minimal app whose only job is to render the overlay.
+  try {
+    await _bootstrap();
+    runApp(const MainApp());
+  } catch (e, st) {
+    reportAppError(e, st, context: 'Bootstrap (main)');
+    runApp(const _BootstrapErrorApp());
+  }
+}
+
+Future<void> _bootstrap() async {
   DartCouchDb.ensureInitialized();
   await initializeDateFormatting();
 
@@ -79,8 +92,6 @@ void main() async {
   di.registerSingleton<AudioPlayerService>(await AudioPlayerService.init());
   di.registerSingleton<AdminOverrideService>(AdminOverrideService());
   di.registerSingleton<HearingStatsService>(HearingStatsService());
-
-  runApp(const MainApp());
 }
 
 /// Global navigator observer used by routes that need to pause expensive
@@ -88,6 +99,23 @@ void main() async {
 /// reacting to playlog ticks while the player page is presented).
 final RouteObserver<ModalRoute<dynamic>> routeObserver =
     RouteObserver<ModalRoute<dynamic>>();
+
+/// Minimal fallback app shown when [main]'s bootstrap throws before [MainApp]
+/// can mount. Its only purpose is to give [GlobalErrorOverlay] somewhere to
+/// paint the already-reported error instead of leaving a black screen.
+class _BootstrapErrorApp extends StatelessWidget {
+  const _BootstrapErrorApp();
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      builder: (context, child) =>
+          GlobalErrorOverlay(child: child ?? const SizedBox.shrink()),
+      home: const Scaffold(body: SizedBox.shrink()),
+    );
+  }
+}
 
 class MainApp extends StatefulWidget {
   const MainApp({super.key});
@@ -150,41 +178,51 @@ class _MainAppState extends State<MainApp> {
                   databaseFileNamePrefix: 'media_player_for_kids_companion',
                   credentialsManager: MyCredentialsManager(),
                   onLogin: () async {
-                    final db = await server.db(
-                      DartCouchDb.usernameToDbName(
-                        (server is OfflineFirstServer
-                            ? server.username
-                            : server is HttpDartCouchServer
-                            ? server.username
-                            : null)!,
-                      ),
-                    );
-                    if (db != null) {
-                      di.registerSingleton<DartCouchDb>(db);
-                      // Central per-document store backing PlayPositionService
-                      // and HearingStatsService (rev-safe, coalesced writes).
-                      di.registerSingleton<DocStore>(DocStore(CouchDocDb(db)));
+                    // DbStateProxyWidget swallows any exception thrown here
+                    // (see _handleLogin's try/catch) and then renders the child
+                    // against a half-initialised DI graph — the original black
+                    // screen. Surface the error on-device before rethrowing so
+                    // it becomes a visible red panel instead.
+                    try {
+                      final db = await server.db(
+                        DartCouchDb.usernameToDbName(
+                          (server is OfflineFirstServer
+                              ? server.username
+                              : server is HttpDartCouchServer
+                              ? server.username
+                              : null)!,
+                        ),
+                      );
+                      if (db != null) {
+                        di.registerSingleton<DartCouchDb>(db);
+                        // Central per-document store backing PlayPositionService
+                        // and HearingStatsService (rev-safe, coalesced writes).
+                        di.registerSingleton<DocStore>(DocStore(CouchDocDb(db)));
 
-                      // Device identity: generate UUID on first run.
-                      final prefs = di<SharedPreferencesWithCache>();
-                      var deviceUuid = prefs.getString('device_uuid');
-                      if (deviceUuid == null) {
-                        deviceUuid = const Uuid().v4();
-                        await prefs.setString('device_uuid', deviceUuid);
+                        // Device identity: generate UUID on first run.
+                        final prefs = di<SharedPreferencesWithCache>();
+                        var deviceUuid = prefs.getString('device_uuid');
+                        if (deviceUuid == null) {
+                          deviceUuid = const Uuid().v4();
+                          await prefs.setString('device_uuid', deviceUuid);
+                        }
+
+                        final playPos = PlayPositionService();
+                        di.registerSingleton<PlayPositionService>(playPos);
+                        await playPos.load(deviceUuid);
+
+                        // Initialise hearing stats from the playlog document.
+                        await di<HearingStatsService>().init(deviceUuid);
+                      } else {
+                        di.unregister<DartCouchDb>();
+                        if (di.isRegistered<DocStore>()) {
+                          di<DocStore>().dispose();
+                          di.unregister<DocStore>();
+                        }
                       }
-
-                      final playPos = PlayPositionService();
-                      di.registerSingleton<PlayPositionService>(playPos);
-                      await playPos.load(deviceUuid);
-
-                      // Initialise hearing stats from the playlog document.
-                      await di<HearingStatsService>().init(deviceUuid);
-                    } else {
-                      di.unregister<DartCouchDb>();
-                      if (di.isRegistered<DocStore>()) {
-                        di<DocStore>().dispose();
-                        di.unregister<DocStore>();
-                      }
+                    } catch (e, st) {
+                      reportAppError(e, st, context: 'Login bootstrap (onLogin)');
+                      rethrow;
                     }
                   },
                   child: server is OfflineFirstServer
