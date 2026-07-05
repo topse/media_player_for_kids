@@ -9,6 +9,7 @@ import 'package:watch_it/watch_it.dart';
 import 'audio_import_util.dart';
 import 'hearing_stats_service.dart';
 import 'media_base_header.dart';
+import 'media_move_dialog.dart';
 import 'package:shared/shared.dart';
 
 typedef ImportModeOption = ({
@@ -54,11 +55,18 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
   List<ViewEntry>? _localChildren;
   _HiddenFilter _hiddenFilter = _HiddenFilter.all;
 
+  /// Ids of children ticked via their leading checkbox for batch actions
+  /// (move / move-to-new-subfolder).
+  final Set<String> _selectedIds = {};
+
   @override
   void didUpdateWidget(covariant MediaFolderDetail oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.lastViewResult != widget.lastViewResult) {
       _localChildren = null;
+      // Drop selections whose docs left this folder (moved away or deleted).
+      final childIds = _children.map((r) => r.id).whereType<String>().toSet();
+      _selectedIds.removeWhere((id) => !childIds.contains(id));
     }
   }
 
@@ -349,17 +357,23 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
     );
   }
 
-  Future<String?> _showNameDialog(String defaultName) => showDialog<String>(
+  Future<String?> _showNameDialog(
+    String defaultName, {
+    String? title,
+    String? label,
+  }) => showDialog<String>(
     context: context,
     builder: (ctx) {
       final l10n = SharedL10n.of(ctx);
       final ctrl = TextEditingController(text: defaultName);
       return AlertDialog(
-        title: Text(l10n.folderDetailNameForNewItem),
+        title: Text(title ?? l10n.folderDetailNameForNewItem),
         content: TextField(
           controller: ctrl,
           autofocus: true,
-          decoration: InputDecoration(labelText: l10n.itemDialogNameLabel),
+          decoration: InputDecoration(
+            labelText: label ?? l10n.itemDialogNameLabel,
+          ),
           onSubmitted: (v) {
             if (v.trim().isNotEmpty) Navigator.of(ctx).pop(v.trim());
           },
@@ -708,6 +722,62 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
         );
       }
     }
+  }
+
+  /// The currently selected children as live docs (stale/removed ids dropped).
+  List<MediaBase> _selectedDocs() {
+    final all = _allDocuments;
+    return _selectedIds.map((id) => all[id]).whereType<MediaBase>().toList();
+  }
+
+  /// Moves the checkbox-selected children to another parent chosen in the move
+  /// dialog. Delegates the reparent + order-number fixup to [moveMediaBases].
+  Future<void> _moveSelected() async {
+    final docs = _selectedDocs();
+    if (docs.isEmpty) return;
+    final target = await MediaMoveDialog.show(
+      context,
+      itemsToMove: docs,
+      allDocuments: _allDocuments,
+    );
+    if (target == null || !mounted) return;
+    await moveMediaBases(
+      db: di<DartCouchDb>(),
+      items: docs,
+      newParentId: target.parentId,
+      allDocuments: _allDocuments,
+    );
+    if (!mounted) return;
+    setState(() => _selectedIds.clear());
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(SharedL10n.of(context).moveDoneSnack(docs.length))),
+    );
+  }
+
+  /// Creates a new subfolder inside the current folder and moves the selected
+  /// children into it. Delegates to [moveIntoNewSubfolder].
+  Future<void> _moveSelectedToNewSubfolder() async {
+    final docs = _selectedDocs();
+    if (docs.isEmpty) return;
+    final l10n = SharedL10n.of(context);
+    final name = await _showNameDialog(
+      '',
+      title: l10n.moveToNewSubfolderTitle,
+      label: l10n.moveToNewSubfolderLabel,
+    );
+    if (name == null || !mounted) return;
+    await moveIntoNewSubfolder(
+      db: di<DartCouchDb>(),
+      items: docs,
+      parentId: widget.folder.id,
+      name: name,
+      allDocuments: _allDocuments,
+    );
+    if (!mounted) return;
+    setState(() => _selectedIds.clear());
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(SharedL10n.of(context).moveDoneSnack(docs.length))),
+    );
   }
 
   Future<void> _handleDroppedFiles(DropDoneDetails details) async {
@@ -1154,6 +1224,41 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
             ],
           ),
         ),
+        if (_selectedIds.isNotEmpty)
+          Material(
+            color: Theme.of(context).colorScheme.primaryContainer,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              child: Row(
+                children: [
+                  IconButton(
+                    tooltip: SharedL10n.of(context).selectionClearTooltip,
+                    icon: const Icon(Icons.close),
+                    onPressed: () => setState(() => _selectedIds.clear()),
+                  ),
+                  Text(
+                    SharedL10n.of(
+                      context,
+                    ).selectionSelectedCount(_selectedIds.length),
+                  ),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: _moveSelected,
+                    icon: const Icon(Icons.drive_file_move_outline),
+                    label: Text(SharedL10n.of(context).commonMove),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: _moveSelectedToNewSubfolder,
+                    icon: const Icon(Icons.create_new_folder),
+                    label: Text(
+                      SharedL10n.of(context).selectionMoveToNewSubfolder,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         Expanded(
           child: DropTarget(
             onDragEntered: (_) => setState(() => _dragging = true),
@@ -1231,28 +1336,47 @@ class _MediaFolderDetailState extends State<MediaFolderDetail> {
                           );
                           final subtitleText = [
                             baseSubtitle,
-                            if (visibilityInfo != null) visibilityInfo,
+                            ?visibilityInfo,
                           ].join(' · ');
                           final textColor = isRestricted ? Colors.grey : null;
 
+                          final docId = doc.id;
                           return ListTile(
                             key: ValueKey(row.id ?? doc.id),
                             onTap: () => widget.selectNode?.call(doc),
-                            leading: SizedBox(
-                              width: 48,
-                              height: 48,
-                              child: MediaBaseIcon(
-                                media: doc,
-                                allDocuments: _allDocuments,
-                                iconSize: 48,
-                                borderRadius: BorderRadius.circular(4),
-                                showTypeBadge: true,
-                                isNew: effectivelyNewById[doc.id] ?? false,
-                                showNewStar: false,
-                                constraintBadgeColor: _constraintBadgeColor(
-                                  doc,
+                            leading: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Checkbox(
+                                  value: docId != null &&
+                                      _selectedIds.contains(docId),
+                                  onChanged: docId == null
+                                      ? null
+                                      : (checked) => setState(() {
+                                          if (checked == true) {
+                                            _selectedIds.add(docId);
+                                          } else {
+                                            _selectedIds.remove(docId);
+                                          }
+                                        }),
                                 ),
-                              ),
+                                SizedBox(
+                                  width: 48,
+                                  height: 48,
+                                  child: MediaBaseIcon(
+                                    media: doc,
+                                    allDocuments: _allDocuments,
+                                    iconSize: 48,
+                                    borderRadius: BorderRadius.circular(4),
+                                    showTypeBadge: true,
+                                    isNew: effectivelyNewById[doc.id] ?? false,
+                                    showNewStar: false,
+                                    constraintBadgeColor: _constraintBadgeColor(
+                                      doc,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                             title: Row(
                               children: [

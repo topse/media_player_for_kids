@@ -748,5 +748,43 @@
     }
   },
   "hearingStatsAllKids": "All Kids",
-  "hearingStatsLabel": "Stats:"
+  "hearingStatsLabel": "Stats:",
+  "commonMove": "Move",
+  "moveDialogTitleOne": "Move \"{name}\" to:",
+  "@moveDialogTitleOne": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "moveDialogTitleMany": "Move {count} entries to:",
+  "@moveDialogTitleMany": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "moveDialogRootLevel": "Top level",
+  "moveDoneSnack": "{count, plural, =1{Moved 1 entry} other{Moved {count} entries}}",
+  "@moveDoneSnack": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "moveToNewSubfolderTitle": "Move to new subfolder",
+  "moveToNewSubfolderLabel": "New subfolder name",
+  "selectionSelectedCount": "{count} selected",
+  "@selectionSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "selectionClearTooltip": "Clear selection",
+  "selectionMoveToNewSubfolder": "To new subfolder"
 }

@@ -285,5 +285,15 @@
   "audioImportCompressingFile": "Komprimiere Datei\n{filename}",
   "audioImportFinishedFile": "Datei fertig\n{filename}",
   "hearingStatsAllKids": "Alle Kinder",
-  "hearingStatsLabel": "Statistik:"
+  "hearingStatsLabel": "Statistik:",
+  "commonMove": "Verschieben",
+  "moveDialogTitleOne": "„{name}“ verschieben nach:",
+  "moveDialogTitleMany": "{count} Einträge verschieben nach:",
+  "moveDialogRootLevel": "Oberste Ebene",
+  "moveDoneSnack": "{count, plural, =1{1 Eintrag verschoben} other{{count} Einträge verschoben}}",
+  "moveToNewSubfolderTitle": "In neuen Unterordner verschieben",
+  "moveToNewSubfolderLabel": "Name des neuen Unterordners",
+  "selectionSelectedCount": "{count} ausgewählt",
+  "selectionClearTooltip": "Auswahl aufheben",
+  "selectionMoveToNewSubfolder": "In neuen Unterordner"
 }

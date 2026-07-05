@@ -1813,6 +1813,66 @@ abstract class SharedL10n {
   /// In en, this message translates to:
   /// **'Stats:'**
   String get hearingStatsLabel;
+
+  /// No description provided for @commonMove.
+  ///
+  /// In en, this message translates to:
+  /// **'Move'**
+  String get commonMove;
+
+  /// No description provided for @moveDialogTitleOne.
+  ///
+  /// In en, this message translates to:
+  /// **'Move \"{name}\" to:'**
+  String moveDialogTitleOne(String name);
+
+  /// No description provided for @moveDialogTitleMany.
+  ///
+  /// In en, this message translates to:
+  /// **'Move {count} entries to:'**
+  String moveDialogTitleMany(int count);
+
+  /// No description provided for @moveDialogRootLevel.
+  ///
+  /// In en, this message translates to:
+  /// **'Top level'**
+  String get moveDialogRootLevel;
+
+  /// No description provided for @moveDoneSnack.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Moved 1 entry} other{Moved {count} entries}}'**
+  String moveDoneSnack(int count);
+
+  /// No description provided for @moveToNewSubfolderTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Move to new subfolder'**
+  String get moveToNewSubfolderTitle;
+
+  /// No description provided for @moveToNewSubfolderLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'New subfolder name'**
+  String get moveToNewSubfolderLabel;
+
+  /// No description provided for @selectionSelectedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} selected'**
+  String selectionSelectedCount(int count);
+
+  /// No description provided for @selectionClearTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear selection'**
+  String get selectionClearTooltip;
+
+  /// No description provided for @selectionMoveToNewSubfolder.
+  ///
+  /// In en, this message translates to:
+  /// **'To new subfolder'**
+  String get selectionMoveToNewSubfolder;
 }
 
 class _SharedL10nDelegate extends LocalizationsDelegate<SharedL10n> {

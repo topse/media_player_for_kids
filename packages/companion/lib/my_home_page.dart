@@ -12,6 +12,7 @@ import 'media_folder_detail.dart';
 import 'media_folder_dialog.dart';
 import 'media_item_detail.dart';
 import 'media_item_dialog.dart';
+import 'media_move_dialog.dart';
 import 'package:shared/shared.dart';
 import 'split_view.dart';
 import 'audio_playback_controls.dart';
@@ -371,9 +372,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     _hearingStats.isNotEmpty ? _hearingStats : null,
                     _allDocumentsMap,
                   );
-                  final subtitleText = visibilityInfo != null
-                      ? visibilityInfo
-                      : null;
+                  final subtitleText = visibilityInfo;
 
                   return GestureDetector(
                     onTap: () {
@@ -451,6 +450,13 @@ class _MyHomePageState extends State<MyHomePage> {
                               onPressed: () => _showCreateDialog(node.key),
                             ),
                             IconButton(
+                              tooltip: SharedL10n.of(context).commonMove,
+                              icon: const Icon(Icons.drive_file_move_outline),
+                              onPressed: _isReordering
+                                  ? null
+                                  : () => _moveNode(node),
+                            ),
+                            IconButton(
                               icon: Icon(
                                 Icons.delete,
                                 color: Theme.of(context).colorScheme.error,
@@ -499,6 +505,31 @@ class _MyHomePageState extends State<MyHomePage> {
         right: _buildDetailView(),
       ),
     );
+  }
+
+  /// Opens the move dialog for the folder behind [node] and, on confirmation,
+  /// reparents it via the shared [moveMediaBases] helper. The change-stream then
+  /// relocates the node in the tree automatically.
+  Future<void> _moveNode(IndexedTreeNode node) async {
+    final media = node.data as MediaBase;
+    final target = await MediaMoveDialog.show(
+      context,
+      itemsToMove: [media],
+      allDocuments: _allDocumentsMap,
+    );
+    if (target == null || !mounted) return;
+
+    setState(() => _isReordering = true);
+    try {
+      await moveMediaBases(
+        db: di<DartCouchDb>(),
+        items: [media],
+        newParentId: target.parentId,
+        allDocuments: _allDocumentsMap,
+      );
+    } finally {
+      if (mounted) setState(() => _isReordering = false);
+    }
   }
 
   Future<void> _moveNodeUp(IndexedTreeNode node) async {

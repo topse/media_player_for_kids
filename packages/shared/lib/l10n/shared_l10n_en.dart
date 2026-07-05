@@ -1001,4 +1001,48 @@ class SharedL10nEn extends SharedL10n {
 
   @override
   String get hearingStatsLabel => 'Stats:';
+
+  @override
+  String get commonMove => 'Move';
+
+  @override
+  String moveDialogTitleOne(String name) {
+    return 'Move \"$name\" to:';
+  }
+
+  @override
+  String moveDialogTitleMany(int count) {
+    return 'Move $count entries to:';
+  }
+
+  @override
+  String get moveDialogRootLevel => 'Top level';
+
+  @override
+  String moveDoneSnack(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Moved $count entries',
+      one: 'Moved 1 entry',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get moveToNewSubfolderTitle => 'Move to new subfolder';
+
+  @override
+  String get moveToNewSubfolderLabel => 'New subfolder name';
+
+  @override
+  String selectionSelectedCount(int count) {
+    return '$count selected';
+  }
+
+  @override
+  String get selectionClearTooltip => 'Clear selection';
+
+  @override
+  String get selectionMoveToNewSubfolder => 'To new subfolder';
 }

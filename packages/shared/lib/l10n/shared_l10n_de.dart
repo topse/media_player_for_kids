@@ -1010,4 +1010,48 @@ class SharedL10nDe extends SharedL10n {
 
   @override
   String get hearingStatsLabel => 'Statistik:';
+
+  @override
+  String get commonMove => 'Verschieben';
+
+  @override
+  String moveDialogTitleOne(String name) {
+    return '„$name“ verschieben nach:';
+  }
+
+  @override
+  String moveDialogTitleMany(int count) {
+    return '$count Einträge verschieben nach:';
+  }
+
+  @override
+  String get moveDialogRootLevel => 'Oberste Ebene';
+
+  @override
+  String moveDoneSnack(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Einträge verschoben',
+      one: '1 Eintrag verschoben',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get moveToNewSubfolderTitle => 'In neuen Unterordner verschieben';
+
+  @override
+  String get moveToNewSubfolderLabel => 'Name des neuen Unterordners';
+
+  @override
+  String selectionSelectedCount(int count) {
+    return '$count ausgewählt';
+  }
+
+  @override
+  String get selectionClearTooltip => 'Auswahl aufheben';
+
+  @override
+  String get selectionMoveToNewSubfolder => 'In neuen Unterordner';
 }
