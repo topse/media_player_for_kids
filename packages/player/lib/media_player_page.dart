@@ -179,6 +179,21 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
     );
   }
 
+  /// Bookkeeping for every user-initiated seek or track skip, regardless of
+  /// surface: registered as [AudioPlayerService.onBeforeUserSeek], so the
+  /// media notification, lock screen and headset buttons run exactly the
+  /// same path as the on-page slider and skip buttons.
+  ///
+  /// Order matters: the pre-seek position is captured while the about-to-end
+  /// segment is still current, then [HearingStatsService.recordSeek] splits
+  /// the segment, then the allowance timer is recomputed (a finalised or
+  /// discarded segment changes the consumed stats).
+  void _onUserSeek() {
+    _saveCurrentPosition();
+    di<HearingStatsService>().recordSeek(widget.item.id!);
+    _scheduleAllowanceTimer();
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
@@ -337,6 +352,15 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
         initialPosition: initialPosition,
       );
     }
+
+    // The kid may have backed out while the tracks were loading — never arm
+    // the timer or the subscriptions below on a disposed page (their
+    // callbacks read the singleton player and write positions/stats).
+    if (!mounted) return;
+
+    // Funnel ALL user seeks/skips (page controls, notification, lock screen,
+    // headset buttons) through a single bookkeeping path.
+    _audioService.onBeforeUserSeek = _onUserSeek;
 
     // Schedule mid-playback constraint enforcement.
     _scheduleAllowanceTimer();
@@ -559,6 +583,7 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
     _playingSub?.cancel();
     _positionSub?.cancel();
     _dbSubscription?.cancel();
+    _audioService.onBeforeUserSeek = null;
 
     di<HearingStatsService>().recordPlayStop(widget.item.id!);
 
@@ -693,19 +718,9 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
                             IconButton(
                               icon: const Icon(Icons.skip_previous),
                               iconSize: 36,
+                              // Seek bookkeeping runs via onBeforeUserSeek.
                               onPressed: hasPrevious
-                                  ? () {
-                                      // Capture the pre-seek position while
-                                      // the about-to-end segment is still
-                                      // current — otherwise its progress is
-                                      // lost.
-                                      _saveCurrentPosition();
-                                      di<HearingStatsService>().recordSeek(
-                                        widget.item.id!,
-                                      );
-                                      _audioService.skipToPrevious();
-                                      _scheduleAllowanceTimer();
-                                    }
+                                  ? () => _audioService.skipToPrevious()
                                   : null,
                             ),
                           Expanded(
@@ -768,11 +783,13 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
                                             });
                                           },
                                           onChangeEnd: (value) {
-                                            _saveCurrentPosition();
-                                            di<HearingStatsService>()
-                                                .recordSeek(widget.item.id!);
+                                            // _seekGlobalMs seeks via
+                                            // player.seek directly (needs a
+                                            // track index), bypassing the
+                                            // handler hook — run the seek
+                                            // bookkeeping explicitly.
+                                            _onUserSeek();
                                             _seekGlobalMs(value.toInt());
-                                            _scheduleAllowanceTimer();
                                             setState(() {
                                               _audiobookDragMs = null;
                                             });
@@ -806,19 +823,13 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
                                       min: 0.0,
                                       max: maxSeconds,
                                       onChanged: (value) {
-                                        // Capture pre-seek position so a
-                                        // valid segment isn't lost. After
-                                        // recordSeek the current segment
-                                        // resets to 0, so subsequent drag
-                                        // ticks won't pass the threshold.
-                                        _saveCurrentPosition();
-                                        di<HearingStatsService>().recordSeek(
-                                          widget.item.id!,
-                                        );
+                                        // Fires onBeforeUserSeek per drag
+                                        // tick; after the first recordSeek
+                                        // the segment is 0 ms, so further
+                                        // ticks can't pass the threshold.
                                         _audioService.seek(
                                           Duration(milliseconds: value.toInt()),
                                         );
-                                        _scheduleAllowanceTimer();
                                       },
                                     ),
                                     Text(
@@ -837,14 +848,7 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
                               icon: const Icon(Icons.skip_next),
                               iconSize: 36,
                               onPressed: hasNext
-                                  ? () {
-                                      _saveCurrentPosition();
-                                      di<HearingStatsService>().recordSeek(
-                                        widget.item.id!,
-                                      );
-                                      _audioService.skipToNext();
-                                      _scheduleAllowanceTimer();
-                                    }
+                                  ? () => _audioService.skipToNext()
                                   : null,
                             ),
                         ],

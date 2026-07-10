@@ -56,7 +56,7 @@ Constraints are a composable tree of nodes stored as JSON on `MediaBase.hearingC
 
 **Time windows** (`TimeWindowType`): `perDay`, `perWeek`, `perMonth`, `sinceDate`, `rollingHours`
 
-**Count modes** (`CountMode`): `anyStart` (counted on play start), `completedOnly` (counted only on natural playlist end)
+**Play counting is fractional:** `PlayCountConstraint` sums `playCountFraction` over the window — a 10 % listen consumes 0.1 plays, and a session split into several segments by seeks consumes the fraction actually heard, never one count per segment. (There is no per-event count mode; an earlier `CountMode` design was never implemented.)
 
 ### Evaluation Semantics — Nearest Wins
 
@@ -76,12 +76,12 @@ Constraints are a composable tree of nodes stored as JSON on `MediaBase.hearingC
 
 ### Play Event Tracking
 
-Each play session records a `PlayEvent` with:
+Each contiguous play segment that survives the minimum-play threshold records a `PlayEvent` with:
 - `startedAt`: ISO 8601 local datetime
-- `title`: MediaItem name at recording time (survives item deletion/rename)
 - `durationMs`: Actual playback milliseconds (position-based, not wall-clock)
-- `playCountFraction`: Fraction of total item heard (0.0 to 1.0+)
-- `completed`: True if playlist ended naturally
+- `playCountFraction`: Fraction of total item heard (0.0 to 1.0)
+
+The item `title` (MediaItem name at recording time, survives deletion/rename) is stored once per item on the play-log entry, not per event. There is no per-event "completed" flag — natural playlist completion matters only at recording time: a completing segment is never discarded, regardless of duration.
 
 **Minimum play threshold (cross-cutting contract):** The play log only stores `PlayEvent` records for **contiguous play segments** that meet the admin-configured minimum threshold; shorter segments are discarded. Per-item, per-folder, and global constraints all read from the same filtered event stream, so they share the same threshold semantics. Natural completions are never discarded regardless of duration. The per-segment rule, skip-resets-segment behavior, and worked examples are described in [packages/player/CLAUDE.md](packages/player/CLAUDE.md) (the player is the only writer).
 

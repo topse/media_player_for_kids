@@ -448,6 +448,10 @@ class HearingStatsService extends ChangeNotifier {
     _notifyDeferred();
     _persistPlayLog();
 
+    // _accumulatedPlayMs is deliberately NOT reset here (only recordPlayStart
+    // and recordSeek reset it): MediaPlayerPage.dispose() calls recordPlayStop
+    // BEFORE its final _saveCurrentPosition(), whose threshold gate re-reads
+    // the accumulator of the segment finalised just above.
     _activeItemId = null;
   }
 

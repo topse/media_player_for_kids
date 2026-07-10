@@ -285,7 +285,15 @@ class AudioPlayerService extends BaseAudioHandler
         await player.seek(initialPosition, index: initialTrack);
       }
 
-      await player.play();
+      // Deliberately not awaited: just_audio's play() future completes when
+      // playback pauses/stops/finishes — not when it starts. Awaiting it
+      // suspends the caller for the entire listening session (and resumes it
+      // only after the player page may already be disposed).
+      unawaited(
+        player.play().catchError((Object e) {
+          _log.warning('play() completed with error: $e');
+        }),
+      );
       _log.info('loadAndPlay: playback started');
     } catch (e) {
       _log.warning("Load error: $e");
@@ -304,17 +312,37 @@ class AudioPlayerService extends BaseAudioHandler
     await super.stop();
   }
 
-  @override
-  Future<void> seek(Duration position) => player.seek(position);
+  /// Invoked immediately before any user-initiated seek or track skip that
+  /// arrives through the audio_service handler API — the on-page controls as
+  /// well as the media notification, lock screen, headset buttons and Android
+  /// Auto. MediaPlayerPage registers its save-before-seek + segment-split
+  /// bookkeeping here so every surface gets identical per-segment treatment
+  /// (see player CLAUDE.md). Programmatic seeks (audiobook resume in
+  /// [loadAndPlay]) call [player] directly on purpose — they are not user
+  /// seeks and must not split the segment.
+  void Function()? onBeforeUserSeek;
 
   @override
-  Future<void> skipToNext() => player.seekToNext();
+  Future<void> seek(Duration position) {
+    onBeforeUserSeek?.call();
+    return player.seek(position);
+  }
 
   @override
-  Future<void> skipToPrevious() => player.seekToPrevious();
+  Future<void> skipToNext() {
+    onBeforeUserSeek?.call();
+    return player.seekToNext();
+  }
+
+  @override
+  Future<void> skipToPrevious() {
+    onBeforeUserSeek?.call();
+    return player.seekToPrevious();
+  }
 
   @override
   Future<void> skipToQueueItem(int index) async {
+    onBeforeUserSeek?.call();
     await player.seek(Duration.zero, index: index);
   }
 

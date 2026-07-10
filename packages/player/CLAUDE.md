@@ -79,7 +79,7 @@ The app is designed for children to browse and play curated media from a CouchDB
 - Progress should be visible in the browsing grid for audiobooks.
 - **Minimum threshold for position saving:** a position is only saved when the **current** contiguous play segment has met the minimum play threshold (`kMinPlaySeconds`). The threshold is checked on the segment being played right now — not on the whole session — so the saved position always reflects a spot the kid actually listened to past the threshold, never a spot they briefly skimmed. See [Per-segment threshold](#per-segment-minimum-play-threshold) for what counts as a segment.
   - This applies equally to items that already had a saved in-progress position (no resume-mode bypass) and to items being heard for the first time.
-  - **Save before seek/skip.** Every slider seek and skip-next / skip-previous calls the position-save path BEFORE finalising the segment, so a valid segment ending in a seek-away still saves the pre-seek position. After `recordSeek`, the new (post-seek) segment starts at 0 ms and won't pass the gate until it reaches the threshold itself.
+  - **Save before seek/skip.** Every user seek and skip-next / skip-previous — from the on-page controls **and** from external surfaces (media notification, lock screen, headset buttons, Android Auto) — calls the position-save path BEFORE finalising the segment, so a valid segment ending in a seek-away still saves the pre-seek position. After `recordSeek`, the new (post-seek) segment starts at 0 ms and won't pass the gate until it reaches the threshold itself.
   - "Done" markers are never overwritten by a session in which the current segment hasn't met the threshold.
   - Near-end detection (last track, within 30 s of end) always saves as done, regardless of the current segment.
 
@@ -89,7 +89,7 @@ The minimum-play threshold (`HearingStatsService.kMinPlaySeconds`, admin-configu
 
 - A *segment* runs from the last play start (or last user-initiated seek / track skip) until the next seek or until the session ends.
 - A *session* runs from opening the player page until closing it (or natural playlist completion).
-- A user-initiated seek on the slider or a press of skip-next / skip-previous calls `HearingStatsService.recordSeek`, which finalises the current segment and starts a new one.
+- A user-initiated seek or track skip calls `HearingStatsService.recordSeek`, which finalises the current segment and starts a new one. This holds for **every control surface** — the on-page slider and skip buttons as well as the media notification, lock screen, headset buttons and Android Auto: all user seek paths funnel through one hook (`AudioPlayerService.onBeforeUserSeek`) that runs save-before-seek + `recordSeek`. Programmatic seeks (the audiobook resume-seek at load) are deliberately not user seeks and do not split the segment.
 - Pauses do NOT end a segment. Pause/resume keeps accumulating into the same segment.
 - A segment that finishes below threshold (i.e. its `PlayEvent` would be too short) is discarded entirely — it never appears in the play log and contributes nothing to per-item, per-folder, or global hearing-constraint counters.
 - Natural playlist completion always counts as a valid segment, regardless of accumulated duration.

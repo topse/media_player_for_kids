@@ -4,7 +4,7 @@ publish_to: "none"
 
 resolution: workspace
 
-version: 2.10.4+30
+version: 2.14.0+32
 
 environment:
   sdk: ">=3.10.4 <4.0.0"
@@ -12,7 +12,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  dart_mappable: ^4.7.0
+  dart_mappable: ^4.8.0
 
   dart_couch_widgets:
     git:

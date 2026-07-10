@@ -83,7 +83,13 @@ Future<void> _bootstrap() async {
   );
   di.registerSingleton<SharedPreferencesWithCache>(prefs);
 
-  OfflineFirstServer server = OfflineFirstServer(migration: MyMigration());
+  // KeepWinnerResolver: replication conflicts (e.g. on playposition-<uuid>,
+  // which both this device and the companion's repair sweep write) collapse
+  // to CouchDB's deterministic winner instead of accumulating invisibly.
+  OfflineFirstServer server = OfflineFirstServer(
+    migration: MyMigration(),
+    conflictResolver: const KeepWinnerResolver(),
+  );
   di.registerSingleton<DartCouchServer>(server);
 
   // AudioDeviceService must be registered before AudioPlayerService so the
