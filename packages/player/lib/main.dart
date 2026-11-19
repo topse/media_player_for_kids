@@ -4,25 +4,27 @@ import 'package:path/path.dart' as p;
 
 import 'package:dart_couch_widgets/dart_couch.dart';
 import 'package:dart_couch_widgets/dart_couch_widgets.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:logging/logging.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:player/directory_view.dart';
 import 'package:player/error_overlay.dart';
-import 'package:player/kid_name_gate.dart';
+import 'package:player/device_profile_gate.dart';
 
 import 'package:player/admin/admin_override_service.dart';
 import 'package:player/audio_player_service.dart';
 import 'package:player/hearing_stats_service.dart';
-import 'package:player/play_position_service.dart';
 import 'package:shared/shared.dart';
 import 'package:player/audio_device_service.dart';
 import 'package:player/admin/audio_device_admin_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uuid/uuid.dart';
 import 'package:watch_it/watch_it.dart';
+
+/// Debug-only: talk to CouchDB directly over HTTP (no local replica) instead
+/// of the normal offline-first setup. Must be `false` for real builds.
+final bool useHttp = false;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -73,7 +75,8 @@ Future<void> _bootstrap() async {
         'audio_device_configs',
         'grid_columns_portrait',
         'grid_columns_landscape',
-        'device_uuid',
+        kDeviceUuidPrefKey,
+        kProfilePendingDocsPrefKey,
         AdminOverrideService.kIgnoreConstraints,
         AdminOverrideService.kIgnoreDateSettings,
         AdminOverrideService.kGracePeriodMinutes,
@@ -83,13 +86,20 @@ Future<void> _bootstrap() async {
   );
   di.registerSingleton<SharedPreferencesWithCache>(prefs);
 
-  // KeepWinnerResolver: replication conflicts (e.g. on playposition-<uuid>,
-  // which both this device and the companion's repair sweep write) collapse
-  // to CouchDB's deterministic winner instead of accumulating invisibly.
-  OfflineFirstServer server = OfflineFirstServer(
-    migration: MyMigration(),
-    conflictResolver: const KeepWinnerResolver(),
-  );
+  // useHttp (debug-only, see top of file): talk to a remote CouchDB directly
+  // over HTTP instead of replicating it into a local offline-first copy first
+  // — a live database can take ~30 min to replicate, which is too slow to
+  // debug against.
+  final DartCouchServer server = useHttp
+      ? HttpDartCouchServer(migration: MyMigration())
+      // KeepWinnerResolver: replication conflicts (e.g. on
+      // playposition-<uuid>, which both this device and the companion's
+      // repair sweep write) collapse to CouchDB's deterministic winner
+      // instead of accumulating invisibly.
+      : OfflineFirstServer(
+          migration: MyMigration(),
+          conflictResolver: const KeepWinnerResolver(),
+        );
   di.registerSingleton<DartCouchServer>(server);
 
   // AudioDeviceService must be registered before AudioPlayerService so the
@@ -131,20 +141,27 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
-  late final OfflineFirstServerLifecycleObserver _lifecycleObserver;
+  OfflineFirstServerLifecycleObserver? _lifecycleObserver;
 
   @override
   void initState() {
     super.initState();
-    _lifecycleObserver = OfflineFirstServerLifecycleObserver(
-      server: di<DartCouchServer>() as OfflineFirstServer,
-    );
-    WidgetsBinding.instance.addObserver(_lifecycleObserver);
+    // No pause/resume lifecycle handling for HttpDartCouchServer (useHttp
+    // debug mode) — there's no local replica to pause/resume.
+    final server = di<DartCouchServer>();
+    if (server is OfflineFirstServer) {
+      final observer = OfflineFirstServerLifecycleObserver(server: server);
+      _lifecycleObserver = observer;
+      WidgetsBinding.instance.addObserver(observer);
+    }
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(_lifecycleObserver);
+    final observer = _lifecycleObserver;
+    if (observer != null) {
+      WidgetsBinding.instance.removeObserver(observer);
+    }
     super.dispose();
   }
 
@@ -203,22 +220,22 @@ class _MainAppState extends State<MainApp> {
                         di.registerSingleton<DartCouchDb>(db);
                         // Central per-document store backing PlayPositionService
                         // and HearingStatsService (rev-safe, coalesced writes).
-                        di.registerSingleton<DocStore>(DocStore(CouchDocDb(db)));
+                        di.registerSingleton<DocStore>(
+                          DocStore(CouchDocDb(db)),
+                        );
 
-                        // Device identity: generate UUID on first run.
-                        final prefs = di<SharedPreferencesWithCache>();
-                        var deviceUuid = prefs.getString('device_uuid');
-                        if (deviceUuid == null) {
-                          deviceUuid = const Uuid().v4();
-                          await prefs.setString('device_uuid', deviceUuid);
+                        // Device profile: if this device has a complete one,
+                        // start the per-device services right away. Otherwise
+                        // DeviceProfileGate lets the parent choose and
+                        // ProfileSyncGate starts them once an adopted
+                        // profile's docs have arrived.
+                        if (deviceProfileReady()) {
+                          await initDeviceServices(
+                            di<SharedPreferencesWithCache>().getString(
+                              kDeviceUuidPrefKey,
+                            )!,
+                          );
                         }
-
-                        final playPos = PlayPositionService();
-                        di.registerSingleton<PlayPositionService>(playPos);
-                        await playPos.load(deviceUuid);
-
-                        // Initialise hearing stats from the playlog document.
-                        await di<HearingStatsService>().init(deviceUuid);
                       } else {
                         di.unregister<DartCouchDb>();
                         if (di.isRegistered<DocStore>()) {
@@ -227,20 +244,29 @@ class _MainAppState extends State<MainApp> {
                         }
                       }
                     } catch (e, st) {
-                      reportAppError(e, st, context: 'Login bootstrap (onLogin)');
+                      reportAppError(
+                        e,
+                        st,
+                        context: 'Login bootstrap (onLogin)',
+                      );
                       rethrow;
                     }
                   },
-                  child: server is OfflineFirstServer
-                      ? KidNameGate(
-                          child: ReplicationStateProxyWidget(
-                            server: server,
-                            waitForUsersDatabase: true,
-                            keepScreenOn: true,
-                            child: const DirectoryView(),
-                          ),
-                        )
-                      : const DirectoryView(),
+                  // Profile choice comes first (reads the server, so the
+                  // parent need not wait for the initial sync), then the
+                  // wait for an adopted profile's docs, then the sync screen.
+                  child: DeviceProfileGate(
+                    child: ProfileSyncGate(
+                      child: server is OfflineFirstServer
+                          ? ReplicationStateProxyWidget(
+                              server: server,
+                              waitForUsersDatabase: true,
+                              keepScreenOn: true,
+                              child: const DirectoryView(),
+                            )
+                          : const DirectoryView(),
+                    ),
+                  ),
                 ),
               );
             },

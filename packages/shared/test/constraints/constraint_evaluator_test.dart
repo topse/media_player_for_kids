@@ -926,6 +926,96 @@ void main() {
       );
       expect(ratio, 1.0);
     });
+
+    test(
+        'inherited PlayCountConstraint pools events across NESTED sub-folders '
+        '(regression: "Nur 2x am Tag" folder containing sub-folders)', () {
+      // Reported bug: a folder with a "max 2× per day" constraint whose direct
+      // children are sub-folders (not items). The audio items live one level
+      // deeper. The folder pool must aggregate events across ALL descendant
+      // items, not just the folder's direct children — otherwise the pool is
+      // always empty (sub-folders carry no play events), the count never
+      // advances, the app-bar indicator sits at 0 %, and playback is never
+      // blocked no matter how often the kid listens.
+      const constraint = PlayCountConstraint(
+        maxCount: 2,
+        window: TimeWindow(type: TimeWindowType.perDay),
+      );
+      // top ── sub1 ── item1
+      //     └─ sub2 ── item2
+      final top = _folder('top', c: constraint);
+      final sub1 = _folder('sub1', parent: 'top');
+      final sub2 = _folder('sub2', parent: 'top');
+      final item1 = _item('item1', parent: 'sub1');
+      final item2 = _item('item2', parent: 'sub2');
+      final allDocs = <String, MediaBase>{
+        'top': top,
+        'sub1': sub1,
+        'sub2': sub2,
+        'item1': item1,
+        'item2': item2,
+      };
+
+      // item1 (nested two levels below the constraint holder) played twice.
+      final allStats = <String, HearingStats?>{
+        'item1': _stats('item1', [
+          _event('2026-03-03T09:00:00'),
+          _event('2026-03-03T09:30:00'),
+        ]),
+      };
+
+      // The played item must be blocked.
+      expect(
+        _eval
+            .evaluateWithAncestors(
+              item: item1,
+              allDocuments: allDocs,
+              allStats: allStats,
+              now: _tuesday,
+            )
+            .status,
+        ConstraintStatus.blocked,
+        reason: 'nested item1 reached the pooled limit',
+      );
+
+      // A never-played item in a DIFFERENT sub-folder must also be blocked:
+      // the pool is shared across the whole subtree.
+      expect(
+        _eval
+            .evaluateWithAncestors(
+              item: item2,
+              allDocuments: allDocs,
+              allStats: allStats,
+              now: _tuesday,
+            )
+            .status,
+        ConstraintStatus.blocked,
+        reason: 'sibling in another sub-folder blocked when pool is exhausted',
+      );
+
+      // And the indicator (used-ratio) must report 100 %, not 0 %, whether the
+      // kid is browsing the top folder or a nested sub-folder.
+      expect(
+        _eval.usedRatioWithAncestors(
+          item: top,
+          allDocuments: allDocs,
+          allStats: allStats,
+          now: _tuesday,
+        ),
+        1.0,
+        reason: 'indicator at top folder reflects the nested plays',
+      );
+      expect(
+        _eval.usedRatioWithAncestors(
+          item: sub1,
+          allDocuments: allDocs,
+          allStats: allStats,
+          now: _tuesday,
+        ),
+        1.0,
+        reason: 'indicator while browsing a sub-folder reflects the pool',
+      );
+    });
   });
 
   // ── remainingAllowance ──────────────────────────────────────────────────────

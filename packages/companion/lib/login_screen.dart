@@ -1,5 +1,5 @@
 import 'package:dart_couch_widgets/dart_couch.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:shared/shared.dart';
 import 'package:watch_it/watch_it.dart';
 

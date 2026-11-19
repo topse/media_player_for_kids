@@ -1,40 +1,53 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:dart_couch_widgets/dart_couch.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared/shared.dart';
 import 'package:watch_it/watch_it.dart';
 import 'package:desktop_drop/desktop_drop.dart';
-import 'package:super_clipboard/super_clipboard.dart';
+import 'package:pasteboard/pasteboard.dart';
 
 import 'constraint_editor.dart';
 import 'media_folder_dialog.dart';
 import 'media_item_dialog.dart';
 
-extension _ReadFile on DataReader {
-  Future<Uint8List?> readFile(FileFormat format) {
-    final c = Completer<Uint8List?>();
-    final progress = getFile(
-      format,
-      (file) async {
-        try {
-          final all = await file.readAll();
-          c.complete(all);
-        } catch (e) {
-          c.completeError(e);
-        }
-      },
-      onError: (e) {
-        c.completeError(e);
-      },
-    );
-    if (progress == null) {
-      c.complete(null);
+/// Content type of [bytes] by magic number, for the formats a cover may be
+/// stored in as-is. `null` for anything else (e.g. BMP).
+String? _sniffImageContentType(Uint8List bytes) {
+  bool startsWith(List<int> sig, [int offset = 0]) {
+    if (bytes.length < offset + sig.length) return false;
+    for (var i = 0; i < sig.length; i++) {
+      if (bytes[offset + i] != sig[i]) return false;
     }
-    return c.future;
+    return true;
+  }
+
+  if (startsWith(const [0x89, 0x50, 0x4E, 0x47])) return 'image/png';
+  if (startsWith(const [0xFF, 0xD8, 0xFF])) return 'image/jpeg';
+  if (startsWith(const [0x47, 0x49, 0x46, 0x38])) return 'image/gif'; // GIF8
+  if (startsWith(const [0x52, 0x49, 0x46, 0x46]) && // RIFF....WEBP
+      startsWith(const [0x57, 0x45, 0x42, 0x50], 8)) {
+    return 'image/webp';
+  }
+  return null;
+}
+
+/// Re-encodes any image Flutter can decode (notably the BMP that `pasteboard`
+/// returns on Windows) as PNG. Returns `null` if [bytes] is not an image.
+Future<Uint8List?> _toPng(Uint8List bytes) async {
+  try {
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final data = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+    frame.image.dispose();
+    codec.dispose();
+    return data?.buffer.asUint8List();
+  } catch (_) {
+    return null;
   }
 }
 
@@ -173,6 +186,9 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
     });
   }
 
+  /// The only path that writes the cover attachment. Callers must go through
+  /// [_saveCoverImage], which guarantees [bytes] is a displayable image whose
+  /// [contentType] matches its content.
   Future<void> _saveImageHelper(Uint8List bytes, String contentType) async {
     await di<DartCouchDb>().saveAttachment(
       widget.media.id!,
@@ -186,99 +202,70 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
     });
   }
 
-  String _getContentTypeFromExtension(String path) {
-    final ext = path.split('.').last.toLowerCase();
-    if (ext == 'png') return 'image/png';
-    if (ext == 'jpg' || ext == 'jpeg') return 'image/jpeg';
-    if (ext == 'gif') return 'image/gif';
-    if (ext == 'webp') return 'image/webp';
-    return 'application/octet-stream';
+  /// Validates and stores [bytes] as the cover image (clipboard, drag & drop,
+  /// file picker). PNG/JPEG/GIF/WebP are stored as-is; anything else Flutter
+  /// can decode (e.g. BMP) is re-encoded as PNG. The content type is always
+  /// derived from the bytes, never from a file name. Non-images are rejected
+  /// with a message and nothing is written — a cover the player cannot
+  /// display must never reach the database. Write errors are shown, not
+  /// swallowed.
+  Future<void> _saveCoverImage(Uint8List? bytes) async {
+    try {
+      if (bytes != null && bytes.isNotEmpty) {
+        final contentType = _sniffImageContentType(bytes);
+        if (contentType != null) {
+          await _saveImageHelper(bytes, contentType);
+          return;
+        }
+        final png = await _toPng(bytes);
+        if (png != null) {
+          await _saveImageHelper(png, 'image/png');
+          return;
+        }
+      }
+      _showMessage((l) => l.headerImageUnsupported);
+    } catch (e) {
+      _showMessage((l) => l.headerImageSaveError(e.toString()));
+    }
+  }
+
+  /// Shows a snackbar; [text] is built only after the `mounted` check, so
+  /// callers may use it after async gaps.
+  void _showMessage(String Function(SharedL10n l10n) text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text(SharedL10n.of(context)))),
+    );
   }
 
   Future<void> _pasteFromClipboard() async {
+    final Uint8List? bytes;
     try {
-      // Use super_clipboard for better cross-platform support
-      final clipboard = SystemClipboard.instance;
-      if (clipboard == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(SharedL10n.of(context).headerClipboardUnavailable)),
-        );
-        return;
-      }
-
-      // Read clipboard data
-      final reader = await clipboard.read();
-      if (reader.items.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(SharedL10n.of(context).headerClipboardEmpty)),
-        );
-        return;
-      }
-
-      // Check each item for supported image formats
-      for (final item in reader.items) {
-        // Get available formats for this item
-        final formats = item.getFormats([
-          Formats.png,
-          Formats.jpeg,
-          Formats.gif,
-          Formats.webp,
-        ]);
-
-        // Try to read image data for each supported format
-        for (final format in formats) {
-          if (format is FileFormat) {
-            // For file-based image formats
-            final bytes = await item.readFile(format);
-            if (bytes != null && bytes.isNotEmpty) {
-              String contentType;
-              if (format == Formats.png) {
-                contentType = 'image/png';
-              } else if (format == Formats.jpeg) {
-                contentType = 'image/jpeg';
-              } else if (format == Formats.gif) {
-                contentType = 'image/gif';
-              } else if (format == Formats.webp) {
-                contentType = 'image/webp';
-              } else {
-                contentType = 'image/png'; // default
-              }
-              await _saveImageHelper(bytes, contentType);
-              return;
-            }
-          }
-        }
-      }
-
-      // If we get here, no supported image format was found
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(SharedL10n.of(context).headerClipboardUnsupported)),
-      );
+      // pasteboard returns PNG on macOS/Linux but BMP on Windows (CF_DIB).
+      bytes = await Pasteboard.image;
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(
-                SharedL10n.of(context).headerClipboardError(e.toString()))),
-      );
+      _showMessage((l) => l.headerClipboardError(e.toString()));
+      return;
     }
+    if (bytes == null || bytes.isEmpty) {
+      _showMessage((l) => l.headerClipboardUnsupported);
+      return;
+    }
+    await _saveCoverImage(bytes);
   }
 
   Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile == null) return;
-
-    final bytes = await pickedFile.readAsBytes();
-    if (bytes.isNotEmpty) {
-      final contentType = _getContentTypeFromExtension(pickedFile.name);
-      await _saveImageHelper(bytes, contentType);
+    final Uint8List bytes;
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+      if (pickedFile == null) return;
+      bytes = await pickedFile.readAsBytes();
+    } catch (e) {
+      _showMessage((l) => l.headerImageSaveError(e.toString()));
+      return;
     }
+    await _saveCoverImage(bytes);
   }
 
   Widget _buildDropPlaceholder() {
@@ -506,27 +493,24 @@ class _MediaBaseHeaderState extends State<MediaBaseHeader> {
                   onDragExited: (_) => setState(() => _dragging = false),
                   onDragDone: (details) async {
                     setState(() => _dragging = false);
+                    if (details.files.isEmpty) return;
+                    final file = details.files.first;
+                    Uint8List? bytes;
                     try {
-                      if (details.files.isEmpty) return;
-                      final file = details.files.first;
-                      Uint8List? bytes;
-                      String path = '';
                       try {
                         bytes = await file.readAsBytes();
-                        path = file.path;
                       } catch (_) {
+                        // Some platforms only deliver a path.
                         if (file.path.isNotEmpty) {
                           final f = File(file.path);
                           if (await f.exists()) bytes = await f.readAsBytes();
-                          path = file.path;
                         }
                       }
-
-                      if (bytes != null && bytes.isNotEmpty) {
-                        final contentType = _getContentTypeFromExtension(path);
-                        await _saveImageHelper(bytes, contentType);
-                      }
-                    } catch (_) {}
+                    } catch (e) {
+                      _showMessage((l) => l.headerImageSaveError(e.toString()));
+                      return;
+                    }
+                    await _saveCoverImage(bytes);
                   },
                   child: Stack(
                     children: [

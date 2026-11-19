@@ -320,6 +320,31 @@
   "kidNameLabel": "Your name",
   "kidNamePleaseEnter": "Please enter your name",
   "kidNameDone": "Done",
+  "deviceProfileTitle": "Choose profile",
+  "deviceProfileIntro": "Profiles already exist. If this device replaces an old one, choose the existing profile to keep listening statistics, audiobook positions and the listening time already used.",
+  "deviceProfileWarning": "A profile must only be used on one device at a time. If the old device keeps being used, listening data will be lost.",
+  "deviceProfileLastPlayed": "Last played: {date}",
+  "@deviceProfileLastPlayed": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "deviceProfileNoRecentPlays": "Nothing played in the last 31 days",
+  "deviceProfileCreateNew": "Create new profile",
+  "deviceProfileWaitingForServer": "Waiting for connection to the server …",
+  "deviceProfileSyncing": "Transferring profile data ({arrived} of {total}) …",
+  "@deviceProfileSyncing": {
+    "placeholders": {
+      "arrived": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "playerAppTitle": "Media Player for Kids",
   "playerMenuShowAdmin": "Show admin options",
   "directoryHearingRulesDisabled": "Hearing rules disabled",
@@ -480,6 +505,15 @@
   "headerClipboardUnsupported": "No supported image format in clipboard",
   "headerClipboardError": "Error reading clipboard: {error}",
   "@headerClipboardError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "headerImageUnsupported": "Not a supported image – nothing was saved",
+  "headerImageSaveError": "Could not save image: {error}",
+  "@headerImageSaveError": {
     "placeholders": {
       "error": {
         "type": "String"

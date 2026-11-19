@@ -219,6 +219,7 @@ Constraint evaluation in the directory grid and during playback runs on the UI t
 Entry points to look at when working on the major concerns above. Each file's responsibilities are documented in its own file-level docstring — keep details there, not here.
 
 - `lib/main.dart` — app bootstrap, DI, admin password gate, admin settings entry point.
+- `lib/device_profile_gate.dart` — first-start profile choice (reuse existing vs. new, see root CLAUDE.md "Device Identity"), kid-name prompt, waiting for an adopted profile's docs, per-device service start.
 - `lib/directory_view.dart` — child-facing media browsing.
 - `lib/media_player_page.dart` — player screen, constraint gate, mid-playback allowance enforcement.
 - `lib/hearing_stats_service.dart` — play event recording, persistence, archiving, global constraint subscription.

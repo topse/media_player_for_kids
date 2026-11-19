@@ -1,6 +1,6 @@
 import 'package:dart_couch_widgets/dart_couch.dart';
 import 'package:dart_couch_widgets/dart_couch_widgets.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:player/main.dart';
 import 'package:player/widgets/constraint_allowance_indicator.dart';
 import 'package:shared/models/datatypes.dart';

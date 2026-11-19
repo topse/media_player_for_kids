@@ -16,6 +16,10 @@ Scope split between files:
 - **`packages/player/CLAUDE.md`**: requirements that apply to the child-facing Android player only.
 - **`packages/companion/CLAUDE.md`**: requirements that apply to the parent's desktop companion only.
 
+## Changelogs
+
+`packages/player/CHANGELOG.md` and `packages/companion/CHANGELOG.md` record user-visible changes per release, in German. Keep them short: one headline-style bullet per change, no sub-bullets, no explanations, no implementation details — the why belongs in commits, code comments and this file.
+
 ## Project Overview
 
 A two-app system for curated children's media playback with parental controls:
@@ -65,7 +69,7 @@ Constraints are a composable tree of nodes stored as JSON on `MediaBase.hearingC
   - If the item has its own constraint → only that is evaluated
   - Otherwise the nearest ancestor folder with a constraint is used
   - If no constraint exists in the entire chain → allowed
-- **Folder-level pool.** When the nearest-wins holder is a folder, evaluation aggregates play events across **all direct children** of that folder. Folder constraints are a shared budget across siblings, not a per-item limit — this also applies when the folder itself is passed as the "item" (e.g. for indicators while the kid is browsing inside it).
+- **Folder-level pool.** When the nearest-wins holder is a folder, evaluation aggregates play events across **all descendant items** of that folder — direct children and, transitively, everything nested inside sub-folders. Folder constraints are a shared budget across the whole subtree, not a per-item limit — this also applies when the folder itself is passed as the "item" (e.g. for indicators while the kid is browsing inside it). (Pooling only direct children was a bug: a constraint on a folder whose direct children are sub-folders — which never carry play events themselves — left the pool permanently empty, so the count never advanced, the app-bar indicator sat at 0 %, and playback was never blocked.)
 - `findNearestConstraintHolder()` static helper returns which node owns the effective constraint (used by companion UI for "inherited from" indicators)
 - Fail-open: null stats → `allowed`, unknown constraint type → `allowed`
 
@@ -119,7 +123,14 @@ Admin-configurable thresholds shared with the constraint subsystem:
 
 ### Device Identity and Kid Name
 
-Each device has a UUID (generated on first login). A `DeviceIdentity` document (`device-id-<uuid>`) stores the UUID and `kidName`. The kid name must be collected at first startup after login if missing (blocking) and is used by the companion to label per-device statistics.
+Each device has a profile UUID. A `DeviceIdentity` document (`device-id-<uuid>`) stores the UUID and `kidName`. The kid name must be collected at first startup after login if missing (blocking) and is used by the companion to label per-device statistics.
+
+**Profile reuse on a replacement device.** All replicated per-device data — `device-id-`, `playlog-`, `playlog_archive-`, `playposition-<uuid>` — is keyed by this UUID, so a new device that adopts an existing UUID inherits listening statistics, audiobook positions, and the already-consumed constraint budget (constraint counters only read the own device's playlog — a fresh UUID would reset them). On a fresh install the player therefore offers the existing profiles (read from the **server**, so the parent can choose right after login instead of after the long initial sync) alongside "create new profile". Requirements:
+
+- Nothing (no UUID in prefs, no `DeviceIdentity` doc) is written before that choice — a throwaway profile must never be created.
+- After adopting a profile, the per-device services must not start until that profile's documents have arrived locally in at least the revision the server had at choice time. Starting earlier would create fresh per-device docs that conflict with the incoming ones, and the conflict resolver would silently drop one side's history. The pending document list is persisted so the wait survives restarts and works offline; once complete, later starts are not delayed. (The very first login itself already requires the server — dart_couch refuses it offline.)
+- The dialog must warn that a profile may only be active on one device at a time: two devices writing the same per-device docs produce replication conflicts, and the conflict resolver keeps only one side. This is informational; the parent may still choose it.
+- Device-local settings (admin password, audio-device volume limits, grid columns, minimum-play threshold, grace period, overrides) live in SharedPreferences and are **not** carried over.
 
 ### Test Coverage
 

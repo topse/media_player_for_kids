@@ -4,10 +4,12 @@ publish_to: "none"
 
 resolution: workspace
 
-version: 2.14.0+32
+version: 2.16.2+34
 
 environment:
-  sdk: ">=3.10.4 <4.0.0"
+  sdk: ^3.14.0
+  flutter: ">=3.50.0"
+
 
 dependencies:
   flutter:
@@ -25,13 +27,15 @@ dependencies:
   shared:
     path: ../shared
   path_provider: ^2.1.5
-  just_audio: ^0.10.5
-  audio_service: ^0.18.8
-  audio_session: ^0.2.2
+  just_audio: ^0.10.6
+  audio_service: ^0.18.19
+  audio_session: ^0.2.4
   path: ^1.9.1
-  uuid: ^4.5.1
-  package_info_plus: ^9.0.0
+  uuid: ^4.6.0
+  package_info_plus: ^10.2.2
   intl: any
+  material_ui: ^1.11.1
+  wakelock_plus: ^1.8.0
 
 dev_dependencies:
   flutter_test:

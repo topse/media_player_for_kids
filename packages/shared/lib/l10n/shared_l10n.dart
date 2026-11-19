@@ -614,6 +614,54 @@ abstract class SharedL10n {
   /// **'Done'**
   String get kidNameDone;
 
+  /// No description provided for @deviceProfileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose profile'**
+  String get deviceProfileTitle;
+
+  /// No description provided for @deviceProfileIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Profiles already exist. If this device replaces an old one, choose the existing profile to keep listening statistics, audiobook positions and the listening time already used.'**
+  String get deviceProfileIntro;
+
+  /// No description provided for @deviceProfileWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'A profile must only be used on one device at a time. If the old device keeps being used, listening data will be lost.'**
+  String get deviceProfileWarning;
+
+  /// No description provided for @deviceProfileLastPlayed.
+  ///
+  /// In en, this message translates to:
+  /// **'Last played: {date}'**
+  String deviceProfileLastPlayed(String date);
+
+  /// No description provided for @deviceProfileNoRecentPlays.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing played in the last 31 days'**
+  String get deviceProfileNoRecentPlays;
+
+  /// No description provided for @deviceProfileCreateNew.
+  ///
+  /// In en, this message translates to:
+  /// **'Create new profile'**
+  String get deviceProfileCreateNew;
+
+  /// No description provided for @deviceProfileWaitingForServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for connection to the server …'**
+  String get deviceProfileWaitingForServer;
+
+  /// No description provided for @deviceProfileSyncing.
+  ///
+  /// In en, this message translates to:
+  /// **'Transferring profile data ({arrived} of {total}) …'**
+  String deviceProfileSyncing(int arrived, int total);
+
   /// No description provided for @playerAppTitle.
   ///
   /// In en, this message translates to:
@@ -1297,6 +1345,18 @@ abstract class SharedL10n {
   /// In en, this message translates to:
   /// **'Error reading clipboard: {error}'**
   String headerClipboardError(String error);
+
+  /// No description provided for @headerImageUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Not a supported image – nothing was saved'**
+  String get headerImageUnsupported;
+
+  /// No description provided for @headerImageSaveError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save image: {error}'**
+  String headerImageSaveError(String error);
 
   /// No description provided for @headerChildrenCount.
   ///

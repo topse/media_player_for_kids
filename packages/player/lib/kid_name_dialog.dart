@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:shared/shared.dart';
 
 /// Blocking dialog that asks for the kid's name at first startup.

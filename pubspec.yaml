@@ -3,10 +3,11 @@ description: Media Player für Kinder – Mono-Repo mit Backend, Frontend und Sh
 publish_to: none
 
 environment:
-  sdk: ">=3.10.4 <4.0.0"
+  sdk: ^3.14.0
+  flutter: ">=3.50.0"
 
 dev_dependencies:
-  melos: ^7.4.0
+  melos: ^7.8.0
 
 workspace:
   - packages/shared

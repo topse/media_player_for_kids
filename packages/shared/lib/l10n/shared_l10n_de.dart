@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'shared_l10n.dart';
 
 // ignore_for_file: type=lint
@@ -318,6 +319,38 @@ class SharedL10nDe extends SharedL10n {
 
   @override
   String get kidNameDone => 'Fertig';
+
+  @override
+  String get deviceProfileTitle => 'Profil wählen';
+
+  @override
+  String get deviceProfileIntro =>
+      'Es gibt bereits Profile. Ersetzt dieses Gerät ein altes, wähle das bisherige Profil – dann bleiben Hörstatistik, Hörbuch-Positionen und die bereits verbrauchte Hörzeit erhalten.';
+
+  @override
+  String get deviceProfileWarning =>
+      'Ein Profil darf immer nur auf einem Gerät gleichzeitig benutzt werden. Wird das alte Gerät weiter verwendet, gehen Hördaten verloren.';
+
+  @override
+  String deviceProfileLastPlayed(String date) {
+    return 'Zuletzt gehört: $date';
+  }
+
+  @override
+  String get deviceProfileNoRecentPlays =>
+      'Nichts gehört in den letzten 31 Tagen';
+
+  @override
+  String get deviceProfileCreateNew => 'Neues Profil anlegen';
+
+  @override
+  String get deviceProfileWaitingForServer =>
+      'Warte auf Verbindung zum Server …';
+
+  @override
+  String deviceProfileSyncing(int arrived, int total) {
+    return 'Profildaten werden übertragen ($arrived von $total) …';
+  }
 
   @override
   String get playerAppTitle => 'Media Player für Kinder';
@@ -683,6 +716,15 @@ class SharedL10nDe extends SharedL10n {
   @override
   String headerClipboardError(String error) {
     return 'Fehler beim Lesen der Zwischenablage: $error';
+  }
+
+  @override
+  String get headerImageUnsupported =>
+      'Kein unterstütztes Bild – es wurde nichts gespeichert';
+
+  @override
+  String headerImageSaveError(String error) {
+    return 'Bild konnte nicht gespeichert werden: $error';
   }
 
   @override

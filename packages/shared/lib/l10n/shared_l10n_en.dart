@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'shared_l10n.dart';
 
 // ignore_for_file: type=lint
@@ -317,6 +318,37 @@ class SharedL10nEn extends SharedL10n {
 
   @override
   String get kidNameDone => 'Done';
+
+  @override
+  String get deviceProfileTitle => 'Choose profile';
+
+  @override
+  String get deviceProfileIntro =>
+      'Profiles already exist. If this device replaces an old one, choose the existing profile to keep listening statistics, audiobook positions and the listening time already used.';
+
+  @override
+  String get deviceProfileWarning =>
+      'A profile must only be used on one device at a time. If the old device keeps being used, listening data will be lost.';
+
+  @override
+  String deviceProfileLastPlayed(String date) {
+    return 'Last played: $date';
+  }
+
+  @override
+  String get deviceProfileNoRecentPlays => 'Nothing played in the last 31 days';
+
+  @override
+  String get deviceProfileCreateNew => 'Create new profile';
+
+  @override
+  String get deviceProfileWaitingForServer =>
+      'Waiting for connection to the server …';
+
+  @override
+  String deviceProfileSyncing(int arrived, int total) {
+    return 'Transferring profile data ($arrived of $total) …';
+  }
 
   @override
   String get playerAppTitle => 'Media Player for Kids';
@@ -681,6 +713,15 @@ class SharedL10nEn extends SharedL10n {
   @override
   String headerClipboardError(String error) {
     return 'Error reading clipboard: $error';
+  }
+
+  @override
+  String get headerImageUnsupported =>
+      'Not a supported image – nothing was saved';
+
+  @override
+  String headerImageSaveError(String error) {
+    return 'Could not save image: $error';
   }
 
   @override

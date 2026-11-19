@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:dart_couch/dart_couch.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:logging/logging.dart';
 import 'package:watch_it/watch_it.dart';
 

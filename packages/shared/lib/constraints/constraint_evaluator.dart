@@ -145,10 +145,7 @@ class ConstraintEvaluator {
     required DateTime now,
     SharedL10n? loc,
   }) {
-    final children = allDocuments.values
-        .where((d) => d.parent == holder.id)
-        .map((d) => d.id!)
-        .toList();
+    final children = _descendantIds(holder.id!, allDocuments);
     final childStats = <String, HearingStats>{};
     for (final id in children) {
       final s = lookup(id);
@@ -183,15 +180,56 @@ class ConstraintEvaluator {
 
   // ── Stats resolution ────────────────────────────────────────────────────────
 
+  /// Collects the ids of every descendant of the folder [holderId] — its
+  /// direct children and, transitively, the children of any descendant
+  /// folder.
+  ///
+  /// Folder constraints are a **shared pool across the whole subtree**, not
+  /// just the folder's immediate children. A "max 2× per day" rule on a
+  /// folder that only contains sub-folders (which never carry play events of
+  /// their own) must still pool the events of the audio items nested inside
+  /// those sub-folders. Collecting only direct children left such a folder's
+  /// stats permanently empty, so the constraint counted nothing and its
+  /// app-bar indicator sat at 0 %.
+  ///
+  /// Leaf holders (a media item carrying its own per-item constraint) have no
+  /// descendants, so the returned list is empty and the caller falls back to
+  /// the item's own stats.
+  List<String> _descendantIds(
+    String holderId,
+    Map<String, MediaBase> allDocuments,
+  ) {
+    // Parent → children index, built once per call, then walked breadth-first.
+    final byParent = <String, List<MediaBase>>{};
+    for (final d in allDocuments.values) {
+      final p = d.parent;
+      if (p != null) (byParent[p] ??= []).add(d);
+    }
+    final result = <String>[];
+    final visited = <String>{holderId}; // guards against malformed cycles
+    final queue = <String>[holderId];
+    while (queue.isNotEmpty) {
+      final current = queue.removeLast();
+      for (final child in byParent[current] ?? const []) {
+        final id = child.id;
+        if (id == null || !visited.add(id)) continue;
+        result.add(id);
+        queue.add(id);
+      }
+    }
+    return result;
+  }
+
   /// Returns the [HearingStats] to use when evaluating [constraintHolder]'s
   /// constraint against [item].
   ///
-  /// * **Leaf holder** (no children — typically a media item that holds its
+  /// * **Leaf holder** (no descendants — typically a media item that holds its
   ///   own constraint): return the item's own stats. This is the per-item
   ///   case where the limit applies to playbacks of that single item.
-  /// * **Folder holder** (has direct children): aggregate play events across
-  ///   all direct children so the constraint applies as a shared pool. This
-  ///   covers two cases that look the same to the evaluator:
+  /// * **Folder holder** (has descendants): aggregate play events across all
+  ///   descendant items (transitively, through nested sub-folders) so the
+  ///   constraint applies as a shared pool. This covers two cases that look
+  ///   the same to the evaluator:
   ///   - constraint inherited from an ancestor folder while evaluating a
   ///     child item (nearest-wins walk landed on the folder);
   ///   - constraint held directly by a folder being evaluated as the "item"
@@ -606,10 +644,7 @@ class ConstraintEvaluator {
     required StatsLookup lookup,
     required DateTime now,
   }) {
-    final children = allDocuments.values
-        .where((d) => d.parent == holder.id)
-        .map((d) => d.id!)
-        .toList();
+    final children = _descendantIds(holder.id!, allDocuments);
     final childStats = <String, HearingStats>{};
     for (final id in children) {
       final s = lookup(id);
@@ -655,10 +690,7 @@ class ConstraintEvaluator {
     MediaBase? current = item;
     while (current != null) {
       if (current.hearingConstraint != null) {
-        final children = allDocuments.values
-            .where((d) => d.parent == current!.id)
-            .map((d) => d.id!)
-            .toList();
+        final children = _descendantIds(current.id!, allDocuments);
         final childStats = <String, HearingStats>{};
         for (final id in children) {
           final s = lookup(id);
@@ -1197,10 +1229,7 @@ class ConstraintEvaluator {
     required StatsLookup lookup,
     required DateTime now,
   }) {
-    final children = allDocuments.values
-        .where((d) => d.parent == holder.id)
-        .map((d) => d.id!)
-        .toList();
+    final children = _descendantIds(holder.id!, allDocuments);
     final childStats = <String, HearingStats>{};
     for (final id in children) {
       final s = lookup(id);
