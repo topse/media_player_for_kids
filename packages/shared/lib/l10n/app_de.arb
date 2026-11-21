@@ -94,6 +94,8 @@
   "deviceProfileCreateNew": "Neues Profil anlegen",
   "deviceProfileWaitingForServer": "Warte auf Verbindung zum Server …",
   "deviceProfileSyncing": "Profildaten werden übertragen ({arrived} von {total}) …",
+  "deviceProfileSyncWaitingForNetwork": "Warte auf Netzwerk …",
+  "deviceProfileSyncError": "Synchronisation fehlgeschlagen. Bitte Speicherplatz und Verbindung prüfen und die App neu starten.\n\n{message}",
   "playerAppTitle": "Media Player für Kinder",
   "playerMenuShowAdmin": "Admin-Optionen anzeigen",
   "directoryHearingRulesDisabled": "Hörregeln deaktiviert",

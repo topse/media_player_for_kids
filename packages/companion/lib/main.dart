@@ -150,7 +150,7 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       title: 'Media Player for kids Companion',
       debugShowCheckedModeBanner: false,
-      localizationsDelegates: SharedL10n.localizationsDelegates,
+      localizationsDelegates: appLocalizationsDelegates,
       supportedLocales: SharedL10n.supportedLocales,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),

@@ -168,7 +168,7 @@ class _MainAppState extends State<MainApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      localizationsDelegates: SharedL10n.localizationsDelegates,
+      localizationsDelegates: appLocalizationsDelegates,
       supportedLocales: SharedL10n.supportedLocales,
       // Mount the global error overlay above every route (including the
       // nested MaterialApp below) so any unhandled error is painted on
@@ -187,7 +187,7 @@ class _MainAppState extends State<MainApp> {
               final localFilePath = p.join(snapshot.data!.path, 'DartCouchDb');
               return MaterialApp(
                 title: 'Media Player for kids Companion',
-                localizationsDelegates: SharedL10n.localizationsDelegates,
+                localizationsDelegates: appLocalizationsDelegates,
                 supportedLocales: SharedL10n.supportedLocales,
                 navigatorObservers: [routeObserver],
                 theme: ThemeData(
@@ -254,18 +254,22 @@ class _MainAppState extends State<MainApp> {
                   },
                   // Profile choice comes first (reads the server, so the
                   // parent need not wait for the initial sync), then the
-                  // wait for an adopted profile's docs, then the sync screen.
+                  // sync screen, then the wait for an adopted profile's docs.
+                  // The sync screen must come before ProfileSyncGate: the
+                  // adopted docs arrive as part of the (long) initial sync,
+                  // and only the sync screen shows real progress and errors
+                  // (e.g. disk full) — the gate alone sat at "0 of 4".
                   child: DeviceProfileGate(
-                    child: ProfileSyncGate(
-                      child: server is OfflineFirstServer
-                          ? ReplicationStateProxyWidget(
-                              server: server,
-                              waitForUsersDatabase: true,
-                              keepScreenOn: true,
-                              child: const DirectoryView(),
-                            )
-                          : const DirectoryView(),
-                    ),
+                    child: server is OfflineFirstServer
+                        ? ReplicationStateProxyWidget(
+                            server: server,
+                            waitForUsersDatabase: true,
+                            keepScreenOn: true,
+                            child: const ProfileSyncGate(
+                              child: DirectoryView(),
+                            ),
+                          )
+                        : const ProfileSyncGate(child: DirectoryView()),
                   ),
                 ),
               );

@@ -13,3 +13,4 @@ export 'constraints/constraint_description.dart';
 export 'constraints/play_log.dart';
 export 'init.dart';
 export 'l10n/shared_l10n.dart';
+export 'l10n/app_localizations_delegates.dart';

@@ -662,6 +662,18 @@ abstract class SharedL10n {
   /// **'Transferring profile data ({arrived} of {total}) …'**
   String deviceProfileSyncing(int arrived, int total);
 
+  /// No description provided for @deviceProfileSyncWaitingForNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for network …'**
+  String get deviceProfileSyncWaitingForNetwork;
+
+  /// No description provided for @deviceProfileSyncError.
+  ///
+  /// In en, this message translates to:
+  /// **'Synchronization failed. Please check storage space and connection, then restart the app.\n\n{message}'**
+  String deviceProfileSyncError(String message);
+
   /// No description provided for @playerAppTitle.
   ///
   /// In en, this message translates to:

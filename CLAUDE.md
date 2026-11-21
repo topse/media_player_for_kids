@@ -129,6 +129,7 @@ Each device has a profile UUID. A `DeviceIdentity` document (`device-id-<uuid>`)
 
 - Nothing (no UUID in prefs, no `DeviceIdentity` doc) is written before that choice — a throwaway profile must never be created.
 - After adopting a profile, the per-device services must not start until that profile's documents have arrived locally in at least the revision the server had at choice time. Starting earlier would create fresh per-device docs that conflict with the incoming ones, and the conflict resolver would silently drop one side's history. The pending document list is persisted so the wait survives restarts and works offline; once complete, later starts are not delayed. (The very first login itself already requires the server — dart_couch refuses it offline.)
+- While waiting for the adopted profile's documents, the player must show real replication progress and surface replication errors (e.g. storage full). The documents usually arrive only late in the long initial sync, so a bare "n of 4 documents" counter looks frozen and hides failures.
 - The dialog must warn that a profile may only be active on one device at a time: two devices writing the same per-device docs produce replication conflicts, and the conflict resolver keeps only one side. This is informational; the parent may still choose it.
 - Device-local settings (admin password, audio-device volume limits, grid columns, minimum-play threshold, grace period, overrides) live in SharedPreferences and are **not** carried over.
 

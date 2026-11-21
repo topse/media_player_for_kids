@@ -234,6 +234,12 @@ class _DeviceProfileGateState extends State<DeviceProfileGate> {
 /// straight through. The pending list lives in prefs, so this also survives
 /// restarts and works offline. Checks every [_pollInterval]; keeps the
 /// screen on while waiting.
+///
+/// Sits *below* the replication progress screen: the adopted docs normally
+/// arrive with the initial sync, whose screen shows real progress and errors.
+/// This gate only covers the remainder (a doc revision written after the
+/// sync started) and mirrors the replication state, so a stalled or failed
+/// replication (e.g. disk full) is visible instead of a silent "0 of 4".
 class ProfileSyncGate extends StatefulWidget {
   final Widget child;
 
@@ -250,6 +256,10 @@ class _ProfileSyncGateState extends State<ProfileSyncGate> {
   bool _wakelock = false;
   bool _disposed = false;
 
+  /// Replication state of the user db while waiting (null in HTTP mode).
+  ReplicationProgress? _replication;
+  OfflineFirstDb? _watchedDb;
+
   @override
   void initState() {
     super.initState();
@@ -259,8 +269,35 @@ class _ProfileSyncGateState extends State<ProfileSyncGate> {
   @override
   void dispose() {
     _disposed = true;
+    _unwatchReplication();
     _releaseWakelock();
     super.dispose();
+  }
+
+  void _watchReplication() {
+    final db = di<DartCouchDb>();
+    if (db is! OfflineFirstDb) return;
+    _watchedDb = db;
+    _replication = db.replicationController.progress.value;
+    db.replicationController.progress.addListener(_onReplicationProgress);
+  }
+
+  void _unwatchReplication() {
+    _watchedDb?.replicationController.progress.removeListener(
+      _onReplicationProgress,
+    );
+    _watchedDb = null;
+  }
+
+  void _onReplicationProgress() {
+    final db = _watchedDb;
+    if (db == null || !mounted) return;
+    final progress = db.replicationController.progress.value;
+    if (progress.state == _replication?.state &&
+        progress.message == _replication?.message) {
+      return;
+    }
+    setState(() => _replication = progress);
   }
 
   Future<void> _run() async {
@@ -287,6 +324,7 @@ class _ProfileSyncGateState extends State<ProfileSyncGate> {
     if (pending.isNotEmpty) {
       _wakelock = true;
       unawaited(WakelockPlus.enable());
+      _watchReplication();
       while (!_disposed) {
         final arrived = await _countArrived(pending);
         if (_disposed) return;
@@ -299,6 +337,7 @@ class _ProfileSyncGateState extends State<ProfileSyncGate> {
       }
       if (_disposed) return;
       _log.info('All ${pending.length} adopted profile doc(s) are local');
+      _unwatchReplication();
       await prefs.remove(kProfilePendingDocsPrefKey);
       _releaseWakelock();
     }
@@ -337,9 +376,23 @@ class _ProfileSyncGateState extends State<ProfileSyncGate> {
     if (_ready) return widget.child;
     if (_total == 0) return const _WaitScaffold();
     final l10n = SharedL10n.of(context);
+    final replication = _replication;
+    final String? hint;
+    var isError = false;
+    switch (replication?.state) {
+      case ReplicationState.error:
+        isError = true;
+        hint = l10n.deviceProfileSyncError(replication?.message ?? '');
+      case ReplicationState.waitingForNetwork:
+        hint = l10n.deviceProfileSyncWaitingForNetwork;
+      default:
+        hint = null;
+    }
     return _WaitScaffold(
       message: l10n.deviceProfileSyncing(_arrived, _total),
       progress: _arrived / _total,
+      hint: hint,
+      isError: isError,
     );
   }
 }
@@ -407,10 +460,22 @@ class _WaitScaffold extends StatelessWidget {
   final String? message;
   final double? progress;
 
-  const _WaitScaffold({this.message, this.progress});
+  /// Secondary line below the progress (replication state).
+  final String? hint;
+
+  /// Shows [hint] as an error and stops the spinner.
+  final bool isError;
+
+  const _WaitScaffold({
+    this.message,
+    this.progress,
+    this.hint,
+    this.isError = false,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
       body: Center(
         child: Padding(
@@ -418,7 +483,10 @@ class _WaitScaffold extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const CircularProgressIndicator(),
+              if (isError)
+                Icon(Icons.error_outline, size: 48, color: colors.error)
+              else
+                const CircularProgressIndicator(),
               if (message != null) ...[
                 const SizedBox(height: 20),
                 Text(
@@ -430,6 +498,14 @@ class _WaitScaffold extends StatelessWidget {
               if (progress != null) ...[
                 const SizedBox(height: 12),
                 LinearProgressIndicator(value: progress),
+              ],
+              if (hint != null) ...[
+                const SizedBox(height: 16),
+                Text(
+                  hint!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: isError ? colors.error : null),
+                ),
               ],
             ],
           ),

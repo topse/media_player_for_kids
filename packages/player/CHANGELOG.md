@@ -1,6 +1,11 @@
 # Changelog – Player
 
-## 2.16.2+34 – 2026-11-19
+## 2.16.4 - 2026-11-21
+
+- Absturz beim ersten Start auf deutschsprachigen Geräten behoben (Admin-Passwort-Dialog)
+- Beim Übernehmen eines Profils wird der Synchronisationsfortschritt angezeigt, Fehler (z. B. Speicher voll) werden gemeldet
+
+## 2.16.2 – 2026-11-19
 
 - Bestehendes Profil auf einem Ersatzgerät weiterverwenden
 - Warten auf die Übertragung der Profildaten nach der Übernahme

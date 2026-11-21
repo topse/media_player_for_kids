@@ -353,6 +353,14 @@ class SharedL10nDe extends SharedL10n {
   }
 
   @override
+  String get deviceProfileSyncWaitingForNetwork => 'Warte auf Netzwerk …';
+
+  @override
+  String deviceProfileSyncError(String message) {
+    return 'Synchronisation fehlgeschlagen. Bitte Speicherplatz und Verbindung prüfen und die App neu starten.\n\n$message';
+  }
+
+  @override
   String get playerAppTitle => 'Media Player für Kinder';
 
   @override

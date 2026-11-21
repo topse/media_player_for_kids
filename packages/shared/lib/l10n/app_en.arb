@@ -345,6 +345,15 @@
       }
     }
   },
+  "deviceProfileSyncWaitingForNetwork": "Waiting for network …",
+  "deviceProfileSyncError": "Synchronization failed. Please check storage space and connection, then restart the app.\n\n{message}",
+  "@deviceProfileSyncError": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
   "playerAppTitle": "Media Player for Kids",
   "playerMenuShowAdmin": "Show admin options",
   "directoryHearingRulesDisabled": "Hearing rules disabled",

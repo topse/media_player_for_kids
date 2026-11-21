@@ -351,6 +351,14 @@ class SharedL10nEn extends SharedL10n {
   }
 
   @override
+  String get deviceProfileSyncWaitingForNetwork => 'Waiting for network …';
+
+  @override
+  String deviceProfileSyncError(String message) {
+    return 'Synchronization failed. Please check storage space and connection, then restart the app.\n\n$message';
+  }
+
+  @override
   String get playerAppTitle => 'Media Player for Kids';
 
   @override
