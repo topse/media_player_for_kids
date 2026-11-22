@@ -249,8 +249,9 @@ class HearingStatsService extends ChangeNotifier {
     // Update title if the item was renamed.
     _refreshTitle(itemId, itemTitle);
 
+    // No immediate persist: nothing has been heard yet. The state is dirty and
+    // is written by the periodic timer, pause, stop/completion or lifecycle.
     _notifyDeferred();
-    _persistPlayLog();
 
     // Start periodic persist timer (safety net for crash/kill).
     _persistTimer?.cancel();
@@ -362,9 +363,10 @@ class HearingStatsService extends ChangeNotifier {
       );
     }
 
+    // Not persisted here: the finalised segment stays in memory and is written
+    // by the next pause / stop / completion / lifecycle persist or the timer.
     _dirty = true;
     _notifyDeferred();
-    _persistPlayLog();
   }
 
   /// Call when the playlist ends naturally. Finalises the active event and persists.

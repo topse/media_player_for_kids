@@ -1,0 +1,1 @@
+- die play position wird zu oft geschrieben. erwartet: der player führt die änderungen mit und schreibt nur beim verlassen des players (das schließt verlassen der app natürlich mit ein, also zustandswechsel der app)

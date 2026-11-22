@@ -55,7 +55,9 @@ Future<void> _bootstrap() async {
   // happens regardless of level.
   Logger.root.level = Level.INFO;
   Logger.root.onRecord.listen((record) {
-    if (record.loggerName.startsWith('dart_couch')) {
+    // The SQLite version line at startup is always useful on-device.
+    if (record.loggerName.startsWith('dart_couch') &&
+        record.loggerName != 'dart_couch-sqlite') {
       // Don't log dart_couch stuff, it's not in focus here. Adjust the filter as needed when debugging.
       return;
     }

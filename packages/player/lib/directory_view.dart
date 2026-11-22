@@ -148,20 +148,22 @@ class _DirectoryViewState extends State<DirectoryView>
     _dbSubscription
         ?.cancel(); // Cancel any existing subscription to avoid duplicates
 
-    /*final stream = di<DartCouchDb>().useView(
+    // The by_parent view emits exactly all MediaBase docs (everything except
+    // media_track), so we avoid processing the ~5,000 unrelated docs that
+    // useAllDocs would deliver. No key range: ancestor walks, hidden checks
+    // and folder-level constraint pools need the whole tree. The view emits
+    // null until the design doc exists; build() shows the loading state then.
+    final stream = di<DartCouchDb>().useView(
       'mediatree/by_parent',
       includeDocs: true,
-      startkey: parentNodeId != null ? '["$parentNodeId"]' : '[null]',
-      endkey: parentNodeId != null ? '["$parentNodeId", {}]' : '[null, {}]',
-    );*/
-    final stream = di<DartCouchDb>().useAllDocs(includeDocs: true);
+    );
 
     _dbSubscription = stream.listen((result) {
       final docs = result?.rows
           .map((e) => e.doc)
           .whereType<MediaBase>()
           .toList();
-      _log.info('useAllDocs update: ${docs?.length} docs');
+      _log.info('media docs update: ${docs?.length} docs');
 
       // Always update internal state — the grid must reflect fresh data when
       // it becomes visible again. The expensive part (constraint evaluation
@@ -169,7 +171,10 @@ class _DirectoryViewState extends State<DirectoryView>
       // the page is covered.
       entries = docs;
       if (parentNodeId != null && docs != null) {
-        final byId = {for (final d in docs) if (d.id != null) d.id!: d};
+        final byId = {
+          for (final d in docs)
+            if (d.id != null) d.id!: d,
+        };
         if (_isHiddenOrHasHiddenAncestor(parentNodeId!, byId)) {
           parentNodeId = null;
           _scrollGridToTop();
@@ -334,15 +339,14 @@ class _DirectoryViewState extends State<DirectoryView>
     // constraint holder, so for typical folders this collapses M tiles' worth
     // of evaluation work into 1 or 2 holder evaluations. Grace period and
     // override flag are read once for the whole build.
-    final graceMs = (di<SharedPreferencesWithCache>().getInt(
+    final graceMs =
+        (di<SharedPreferencesWithCache>().getInt(
               AdminOverrideService.kGracePeriodMinutes,
             ) ??
             AdminOverrideService.defaultGracePeriodMinutes) *
         60000;
     final statsService = di<HearingStatsService>();
-    final evalCache = _HolderEvalCache(
-      statsService: statsService,
-    );
+    final evalCache = _HolderEvalCache(statsService: statsService);
 
     return Scaffold(
       appBar: MediaAppBar(
@@ -369,8 +373,7 @@ class _DirectoryViewState extends State<DirectoryView>
             if (overrides.anyOverrideActive)
               MaterialBanner(
                 backgroundColor: Colors.orange[100],
-                leading:
-                    const Icon(Icons.warning_amber, color: Colors.orange),
+                leading: const Icon(Icons.warning_amber, color: Colors.orange),
                 content: Text(
                   [
                     if (overrides.ignoreConstraints)
@@ -386,85 +389,90 @@ class _DirectoryViewState extends State<DirectoryView>
               child: rootItems.isEmpty
                   ? Center(child: Text(l10n.directoryNoMediaItems))
                   : OrientationBuilder(
-                builder: (context, orientation) {
-                  final prefs = di<SharedPreferencesWithCache>();
-                  final crossAxisCount = orientation == Orientation.portrait
-                      ? (prefs.getInt('grid_columns_portrait') ?? 2)
-                      : (prefs.getInt('grid_columns_landscape') ?? 4);
-                  return GridView.builder(
-                    controller: _gridScrollController,
-                    padding: const EdgeInsets.all(16),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: crossAxisCount,
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 16,
-                      childAspectRatio: 0.75,
-                    ),
-                    itemCount: rootItems.length,
-                    itemBuilder: (context, index) {
-                      final item = rootItems[index];
-                      final progress = (item is MediaItem && item.isAudioBook)
-                          ? _computeProgress(item)
-                          : null;
-                      final itemDurationMs = item is MediaItem
-                          ? item.media.fold<int>(
-                              0, (s, t) => s + t.durationMs)
-                          : 0;
-                      final tileEval = _evalForTile(
-                        context: context,
-                        item: item,
-                        allDocuments: allDocuments,
-                        cache: evalCache,
-                        itemDurationMs: itemDurationMs,
-                        graceMs: graceMs,
-                      );
-                      final constraintResult = tileEval.result;
-                      final cannotFinish = tileEval.cannotFinish;
+                      builder: (context, orientation) {
+                        final prefs = di<SharedPreferencesWithCache>();
+                        final crossAxisCount =
+                            orientation == Orientation.portrait
+                            ? (prefs.getInt('grid_columns_portrait') ?? 2)
+                            : (prefs.getInt('grid_columns_landscape') ?? 4);
+                        return GridView.builder(
+                          controller: _gridScrollController,
+                          padding: const EdgeInsets.all(16),
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: crossAxisCount,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
+                                childAspectRatio: 0.75,
+                              ),
+                          itemCount: rootItems.length,
+                          itemBuilder: (context, index) {
+                            final item = rootItems[index];
+                            final progress =
+                                (item is MediaItem && item.isAudioBook)
+                                ? _computeProgress(item)
+                                : null;
+                            final itemDurationMs = item is MediaItem
+                                ? item.media.fold<int>(
+                                    0,
+                                    (s, t) => s + t.durationMs,
+                                  )
+                                : 0;
+                            final tileEval = _evalForTile(
+                              context: context,
+                              item: item,
+                              allDocuments: allDocuments,
+                              cache: evalCache,
+                              itemDurationMs: itemDurationMs,
+                              graceMs: graceMs,
+                            );
+                            final constraintResult = tileEval.result;
+                            final cannotFinish = tileEval.cannotFinish;
 
-                      return _MediaGridItem(
-                        key: ValueKey(item.id),
-                        item: item,
-                        allDocuments: allDocuments,
-                        itemNumber: showItemNumbering ? index + 1 : null,
-                        progress: progress,
-                        isNew: effectivelyNewById[item.id] ?? false,
-                        constraintResult: constraintResult,
-                        cannotFinish: cannotFinish,
-                        onTap: () {
-                          if (constraintResult.status ==
-                              ConstraintStatus.blocked) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  constraintResult.humanReadableReason ??
-                                      l10n.directoryItemUnavailable,
-                                ),
-                              ),
+                            return _MediaGridItem(
+                              key: ValueKey(item.id),
+                              item: item,
+                              allDocuments: allDocuments,
+                              itemNumber: showItemNumbering ? index + 1 : null,
+                              progress: progress,
+                              isNew: effectivelyNewById[item.id] ?? false,
+                              constraintResult: constraintResult,
+                              cannotFinish: cannotFinish,
+                              onTap: () {
+                                if (constraintResult.status ==
+                                    ConstraintStatus.blocked) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        constraintResult.humanReadableReason ??
+                                            l10n.directoryItemUnavailable,
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                if (item is MediaFolder) {
+                                  setState(() {
+                                    parentNodeId = item.id;
+                                  });
+                                  _scrollGridToTop();
+                                } else if (item is MediaItem) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => MediaPlayerPage(
+                                        item: item,
+                                        allDocuments: allDocuments,
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
                             );
-                            return;
-                          }
-                          if (item is MediaFolder) {
-                            setState(() {
-                              parentNodeId = item.id;
-                            });
-                            _scrollGridToTop();
-                          } else if (item is MediaItem) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => MediaPlayerPage(
-                                  item: item,
-                                  allDocuments: allDocuments,
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                      );
-                    },
-                  );
-                },
-              ),
+                          },
+                        );
+                      },
+                    ),
             ),
           ],
         ),
@@ -514,7 +522,9 @@ class _HolderEvalCache {
     );
     final key = holder?.id ?? _noHolderKey;
     return _cache.putIfAbsent(
-        key, () => _compute(item, holder, allDocuments, context));
+      key,
+      () => _compute(item, holder, allDocuments, context),
+    );
   }
 
   _HolderEval _compute(
@@ -566,8 +576,10 @@ class _HolderEvalCache {
         constraint: globalConstraint,
         stats: globalStats,
       );
-      combinedRemainingMs =
-          evaluator.combineRemainingMs(perItemRemainingMs, globalRemainingMs);
+      combinedRemainingMs = evaluator.combineRemainingMs(
+        perItemRemainingMs,
+        globalRemainingMs,
+      );
     }
 
     return _HolderEval(combinedResult, combinedRemainingMs);
@@ -601,11 +613,7 @@ class _CannotFinishMarker extends StatelessWidget {
           ),
         ],
       ),
-      child: const Icon(
-        Icons.timer,
-        size: 18,
-        color: Colors.white,
-      ),
+      child: const Icon(Icons.timer, size: 18, color: Colors.white),
     );
   }
 }
@@ -620,9 +628,7 @@ class _AudiobookProgressBar extends StatelessWidget {
     final isDone = progress >= 1.0;
     // Clamp visual width: min 10% so tiny progress is visible,
     // max 90% so "almost done" is clearly distinct from "done".
-    final visualWidth = isDone
-        ? 1.0
-        : progress.clamp(0.10, 0.90);
+    final visualWidth = isDone ? 1.0 : progress.clamp(0.10, 0.90);
     final color = isDone ? Colors.green : Colors.blue;
     final colorDark = isDone ? Colors.green[900]! : Colors.blue[900]!;
 
@@ -724,8 +730,7 @@ class _MediaGridItem extends StatelessWidget {
                           child: _AudiobookProgressBar(progress: progress!),
                         ),
                       // Blocked overlay — lock icon only, no text
-                      if (constraintResult?.status ==
-                          ConstraintStatus.blocked)
+                      if (constraintResult?.status == ConstraintStatus.blocked)
                         Positioned.fill(
                           child: Container(
                             decoration: BoxDecoration(

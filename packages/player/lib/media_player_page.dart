@@ -86,7 +86,7 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
     super.initState();
     _liveDocuments = Map.of(widget.allDocuments);
     WidgetsBinding.instance.addObserver(this);
-    // No HearingStatsService listener — the [useAllDocs] subscription set up
+    // No HearingStatsService listener — the [useView] subscription set up
     // in [_initAudioAndPlay] already fires on external playlog and
     // global-constraint sync, which is the only case where a mid-play
     // re-evaluation is needed. Local record events (start/seek/stop)
@@ -255,27 +255,27 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
 
     // Pop the page if this item (or any ancestor folder) becomes hidden.
     // Also update _liveDocuments so constraint re-evaluation uses fresh data.
-    _dbSubscription = di<DartCouchDb>().useAllDocs(includeDocs: true).listen((
-      result,
-    ) {
-      if (!mounted) return;
-      final docs = result?.rows
-          .map((e) => e.doc)
-          .whereType<models.MediaBase>()
-          .toList();
-      if (docs == null) return;
-      final byId = {
-        for (final d in docs)
-          if (d.id != null) d.id!: d,
-      };
-      if (_isItemOrAncestorHidden(widget.item.id!, byId)) {
-        _audioService.stop();
-        Navigator.of(context).pop();
-        return;
-      }
-      _liveDocuments = byId;
-      _reevaluateConstraintIfPlaying();
-    });
+    _dbSubscription = di<DartCouchDb>()
+        .useView('mediatree/by_parent', includeDocs: true)
+        .listen((result) {
+          if (!mounted) return;
+          final docs = result?.rows
+              .map((e) => e.doc)
+              .whereType<models.MediaBase>()
+              .toList();
+          if (docs == null) return;
+          final byId = {
+            for (final d in docs)
+              if (d.id != null) d.id!: d,
+          };
+          if (_isItemOrAncestorHidden(widget.item.id!, byId)) {
+            _audioService.stop();
+            Navigator.of(context).pop();
+            return;
+          }
+          _liveDocuments = byId;
+          _reevaluateConstraintIfPlaying();
+        });
 
     // Load all audio attachments from CouchDB into memory
     final db = di<DartCouchDb>();
@@ -798,9 +798,9 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
                                       ),
                                       Text(
                                         '${_formatDuration(Duration(milliseconds: displayMs))} / ${_formatDuration(Duration(milliseconds: _totalItemDurationMs))}',
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.bodySmall,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall,
                                       ),
                                     ],
                                   );
@@ -834,9 +834,9 @@ class _MediaPlayerPageState extends State<MediaPlayerPage>
                                     ),
                                     Text(
                                       '${_formatDuration(position)} / ${_formatDuration(duration)}',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall,
                                     ),
                                   ],
                                 );

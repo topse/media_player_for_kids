@@ -4,7 +4,7 @@ publish_to: "none"
 
 resolution: workspace
 
-version: 2.16.4+39
+version: 2.16.6+40
 
 environment:
   sdk: ^3.14.0

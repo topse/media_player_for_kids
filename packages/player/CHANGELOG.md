@@ -1,5 +1,9 @@
 # Changelog – Player
 
+## 2.16.6 - 2026-11-22
+
+- Performance fixes here and dart_couch
+
 ## 2.16.4 - 2026-11-21
 
 - Absturz beim ersten Start auf deutschsprachigen Geräten behoben (Admin-Passwort-Dialog)
