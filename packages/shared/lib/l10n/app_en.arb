@@ -409,6 +409,7 @@
   "companionAppTitle": "Media Player for Kids Companion",
   "companionGlobalConstraintsMenu": "Global restrictions",
   "companionLogoutMenu": "Log out",
+  "companionAboutMenu": "About",
   "companionDeleteTitle": "Delete?",
   "companionDeleteOneConfirm": "Really delete {kind} \"{name}\"?",
   "@companionDeleteOneConfirm": {

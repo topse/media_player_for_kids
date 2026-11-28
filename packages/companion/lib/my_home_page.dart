@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:animated_tree_view/animated_tree_view.dart';
 import 'package:watch_it/watch_it.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'expandable_fab.dart';
 import 'hearing_stats_service.dart';
@@ -245,6 +246,21 @@ class _MyHomePageState extends State<MyHomePage> {
     super.dispose();
   }
 
+  /// Version comes from the platform build metadata, which Flutter fills
+  /// from `version:` in pubspec.yaml. The dialog's built-in "licenses" button
+  /// opens [showLicensePage] with all dependency licenses.
+  Future<void> _showAbout() async {
+    final info = await PackageInfo.fromPlatform();
+    if (!mounted) return;
+    final l10n = SharedL10n.of(context);
+    showAboutDialog(
+      context: context,
+      applicationName: l10n.companionAppTitle,
+      applicationVersion: '${info.version} (${info.buildNumber})',
+      applicationIcon: Image.asset('assets/app_icon.png', width: 48, height: 48),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final effectivelyNewById = buildEffectiveIsNewMap(_allDocumentsMap);
@@ -307,6 +323,8 @@ class _MyHomePageState extends State<MyHomePage> {
                     builder: (_) => const GlobalConstraintPage(),
                   ),
                 );
+              } else if (value == 'about') {
+                _showAbout();
               } else if (value == 'logout') {
                 widget.onLogout();
               }
@@ -317,6 +335,15 @@ class _MyHomePageState extends State<MyHomePage> {
                 child: ListTile(
                   leading: const Icon(Icons.public),
                   title: Text(l10n.companionGlobalConstraintsMenu),
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'about',
+                child: ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: Text(l10n.companionAboutMenu),
                   contentPadding: EdgeInsets.zero,
                   visualDensity: VisualDensity.compact,
                 ),

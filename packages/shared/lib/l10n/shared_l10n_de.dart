@@ -513,6 +513,9 @@ class SharedL10nDe extends SharedL10n {
   String get companionLogoutMenu => 'Abmelden';
 
   @override
+  String get companionAboutMenu => 'Über';
+
+  @override
   String get companionDeleteTitle => 'Löschen?';
 
   @override

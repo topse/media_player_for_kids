@@ -143,6 +143,7 @@
   "companionAppTitle": "Media Player für Kinder Companion",
   "companionGlobalConstraintsMenu": "Globale Einschränkungen",
   "companionLogoutMenu": "Abmelden",
+  "companionAboutMenu": "Über",
   "companionDeleteTitle": "Löschen?",
   "companionDeleteOneConfirm": "{kind} „{name}\" wirklich löschen?",
   "companionDeleteManyConfirm": "{kind} „{name}\" und die {count} Untereinträge wirklich löschen?",

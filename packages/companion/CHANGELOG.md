@@ -1,8 +1,9 @@
 # Changelog – Companion
 
-## 2.16.4 - 2026-11-21
+## 2.16.8 - 2026-11-21
 
 - Material-Lokalisierung für Deutsch korrekt eingebunden (Dialoge, Datumsauswahl)
+- Neuer „Über“-Dialog mit Version und Lizenzen
 
 ## 2.16.2 – 2026-11-19
 

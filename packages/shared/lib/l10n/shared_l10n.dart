@@ -956,6 +956,12 @@ abstract class SharedL10n {
   /// **'Log out'**
   String get companionLogoutMenu;
 
+  /// No description provided for @companionAboutMenu.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get companionAboutMenu;
+
   /// No description provided for @companionDeleteTitle.
   ///
   /// In en, this message translates to:
